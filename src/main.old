@@ -23,9 +23,9 @@ int maxspeeddir = 1;
 float maxspeed; // Maximum speed
 float currgravity = 1.90;
 float currmass = 20;
-#define NUM_PARTICLES 60
+#define NUM_PARTICLES 100
 uint8_t speed = 1;
-uint8_t count = 50;
+uint8_t count = 100;
 uint8_t boidseperation = 3;
 uint8_t neighbordistance = 6;
 #define LED_PIN 42     // this is for the esp32-s3
@@ -345,7 +345,7 @@ class Boid
     PVector velocity;
     PVector acceleration;
     float maxforce; // Maximum steering force
-    uint8_t brightness;
+    
     int hue;
     float desiredseparation = 3; // this this is the variable that keeps the boids at a certain distance from eachother. the higher the number the more space between. keep this lower than the neighbor distance otherwise the boids will probably not move.
     float neighbordist = 8;      // this will determine the length that a boid will interact with another boid. the lower the number the more isolated the boid will be. the higher the number the boid will interact with another boid at a further distance.
@@ -364,7 +364,6 @@ class Boid
       location = PVector(x, y);
       maxspeed = 2.2;
       maxforce = 0.28;
-      brightness = 255;
       //scale = random(0.5, 68.5);
     //  bounce = random(2.1, 2.5);
       mass = random(1.6, 2.0);
@@ -793,11 +792,13 @@ void incrementG() {
     return force;
   }
 };
+bool setattractor = false;
 
-
+Attractor attractor;
+Attractor attractor2;
+Attractor attractor3;
+Attractor attractor4;
 Attractor attractor5;
-Attractor attractor1;
-
 Boid boids[NUM_PARTICLES];
 int degreestep = 1;
 double degree;
@@ -811,9 +812,7 @@ void start()
     boids[i] = Boid(random(COLS), 0);
   }
    currentPalette_p = &GreenAuroraColors_p;
-  attractor1.setlocation((virtualViewX+24/ 2), (virtualViewY+24/ 2));
-  attractor1.setMass(100);
-  attractor1.setG(4);
+
    attractor5.setlocation((virtualViewX+36/ 2), (virtualViewY+36/ 2));
   attractor5.setMass(1);
   attractor5.setG(0.1);
@@ -822,39 +821,14 @@ int massdir = 1;
 float massstep = 0.5;
 
 PVector center = PVector(36,36);
-bool stopbool = false;
-void movetoCenter()
-{
-  int countto = random(5,25);
-    for (int j = 0; j < countto; j++){
-      for (int i = 0; i < count; i++) {
-          Boid *boid = &boids[i];
-          PVector force1 = attractor1.attract(*boid);
-          boid->applyForce(force1);
-          boid->update(boids, count);
-          boid->wrapAroundBorders();
-          drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, 255, LINEARBLEND_NOWRAP));
-          boid->neighbordist = neidist;
-          boid->desiredseparation = boidsep;
-          if (stopbool == true) 
-          {
-            boid -> velocity = PVector(0,0);
-          }
-      }
-
-      fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);  
-      LEDS.show();  
-    }
-}
-
 void draw() {
     if (firstPass) {
         firstPass = false;
         start();
     }
 
-    EVERY_N_MILLISECONDS(100) {
-    
+    EVERY_N_MILLISECONDS(250) {
+
       attractor5.incrementMass();
       // attractor4.incrementG();
         // if (virtualViewX < 0 || virtualViewX >= VIRTUAL_COLS - VIEWPORT_COLS)
@@ -876,7 +850,7 @@ if (degree > 45 || degree < 1) degreedir = -degreedir;
        attractor5.location.rotateAroundPoint(center.x,center.y, degree);
 
     EVERY_N_MILLISECONDS(8000) {
-        if (count <= 25 || count >= 60)
+        if (count <= 70 || count >= 100)
            countdir = -countdir;
         count += countstep * countdir;        
         if (maxspeed <= 0.9 || maxspeed >= 2.8)
@@ -888,36 +862,31 @@ if (degree > 45 || degree < 1) degreedir = -degreedir;
     palcount = random(0,24);
     SetNewPalette(palcount);  
   }
-  int randomnum = random(0,100);
-  int movetocenterrandom = random(0,200);
-if (randomnum == 5) stopbool = true;
+
     for (int i = 0; i < count; i++) {
         Boid *boid = &boids[i];
-
+       if (setattractor == true) {
+        // PVector force = attractor.attract(*boid);
+        // PVector force2 = attractor2.attract(*boid);
+        // PVector force3 = attractor3.attract(*boid);
+        // PVector force4 = attractor4.attract(*boid);
+       }
         PVector force5 = attractor5.attract(*boid);
                boid->applyForce(force5);
         boid->update(boids, count);
         boid->wrapAroundBorders();
-        boid-> brightness = map(boid->velocity.x + boid->velocity.y,0,3,50,255);
+       if (setattractor == true) {
+        // boid->applyForce(force);
+        // boid->applyForce(force2);
+        // boid->applyForce(force3);
+        // boid->applyForce(force4);
+       }
 
-        drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, boid->brightness, LINEARBLEND_NOWRAP));
+        drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, 255, LINEARBLEND_NOWRAP));
         boid->neighbordist = neidist;
         boid->desiredseparation = boidsep;
-        if (stopbool == true) 
-        {
-          boid -> velocity = PVector(0,0);
-        }
     }
-
     fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);
-    if (movetocenterrandom == 100)
-    {
-      movetoCenter();
-    }
-    if (stopbool == true)
-    {     
-      stopbool = false;
-    }
 }
 
 void setup()
