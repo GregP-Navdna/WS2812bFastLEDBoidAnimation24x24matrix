@@ -49,6 +49,10 @@ const uint8_t VIEWPORT_COLS = 24;
 // Initialize the viewport position
 uint8_t virtualViewX = 24;
 uint8_t virtualViewY = 24;
+int rran = random(1.5F,4.0F);
+int gran = random(1.5F, 4.0F);
+int bran = random(1.5F, 4.0F);
+
 
 #pragma region 
 ///Pallet definitinos and swapping
@@ -367,7 +371,7 @@ class Boid
       brightness = 255;
       //scale = random(0.5, 68.5);
     //  bounce = random(2.1, 2.5);
-      mass = random(1.6, 2.0);
+      mass = random(1.0, 3.0);
       hue = random(10, 255);
     }
 
@@ -743,7 +747,7 @@ class Attractor {
     float massstep = 0.1;
     float GStep = 0.1;
     int gdir = 1;
-    uint8_t massdelaywait = random(5,15);
+    uint8_t massdelaywait = random(5,20);
     uint8_t delaytimer = 0;
     uint8_t massdelay = random (20,800);
   float G; // Gravitational Constant
@@ -793,7 +797,24 @@ void incrementG() {
     return force;
   }
 };
+//Fades CRGB array towards the background color by amount.  
+//fadeAmt > 102 breaks fade but has artistic value(?)
 
+void fadeToColorBy(CRGB* leds, int count, CRGB color, uint8_t fadeAmt) {
+    
+    
+    for (int x = 0; x < count; x++) {
+        // don't know why, looks better when r is brought down 2.5 times faster, brought up half as fast
+        if (leds[x].r < color.r) {
+            leds[x].r = ((leds[x].r << 8) + (((int)(((color.r - leds[x].r) << 7) / rran) * fadeAmt / 255) << 1)) >> 8;
+        }
+        else {
+            leds[x].r = ((leds[x].r << 8) + (((int)(((color.r - leds[x].r) << 7) * rran) * fadeAmt / 255) << 1)) >> 8;
+        }
+        leds[x].g = ((leds[x].g << 8) + ((((color.g - leds[x].g) << 7) * fadeAmt / 255) << 1)) >> 8;
+        leds[x].b = ((leds[x].b << 8) + ((((color.b - leds[x].b) << 7) * fadeAmt / 255) << 1)) >> 8;
+    }
+}  // fadeToColorBy()
 
 Attractor attractor5;
 Attractor attractor1;
@@ -842,10 +863,18 @@ void movetoCenter()
           }
       }
 
-      fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);  
+      //fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);  
+        fadeToColorBy(leds,NUM_LEDS,CRGB::Black,40);
       LEDS.show();  
     }
 }
+void setNewRandomColorFacd()
+{
+  rran = random(1.5F,4.0F);
+gran = random(1.5F, 4.0F);
+bran = random(1.5F, 4.0F);
+}
+
 
 void draw() {
     if (firstPass) {
@@ -867,7 +896,7 @@ void draw() {
             fadebydir = -fadebydir;
         fadebyvalue += 1 * fadebydir;
     }
-degreestep += 1;
+degreestep += 2;
 if (degreestep > 10 || degreestep < 1) degreestepdir = -degreestepdir;
 
 degree += degreestep * degreedir;
@@ -887,6 +916,7 @@ if (degree > 45 || degree < 1) degreedir = -degreedir;
   {
     palcount = random(0,24);
     SetNewPalette(palcount);  
+    setNewRandomColorFacd();
   }
   int randomnum = random(0,100);
   int movetocenterrandom = random(0,200);
@@ -898,7 +928,7 @@ if (randomnum == 5) stopbool = true;
                boid->applyForce(force5);
         boid->update(boids, count);
         boid->wrapAroundBorders();
-        boid-> brightness = map(boid->velocity.x + boid->velocity.y,0,3,50,255);
+        boid-> brightness = map(boid->velocity.x + boid->velocity.y,0,5,50,255);
 
         drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, boid->brightness, LINEARBLEND_NOWRAP));
         boid->neighbordist = neidist;
@@ -909,7 +939,9 @@ if (randomnum == 5) stopbool = true;
         }
     }
 
-    fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);
+    //fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);
+
+    fadeToColorBy(leds,NUM_LEDS,CRGB::Black,40);
     if (movetocenterrandom == 100)
     {
       movetoCenter();
