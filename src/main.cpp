@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <FastLED.h>
 #include <Math.h>
-
 #include <vector>
+#include "vec2.h"
 
 float stepcount = 0.3;
 uint8_t fadebyvalue = random(110,120 );
@@ -53,292 +53,9 @@ int rran = random(1.5F,4.0F);
 int gran = random(1.5F, 4.0F);
 int bran = random(1.5F, 4.0F);
 
-
-#pragma region 
-///Pallet definitinos and swapping
- const static TProgmemRGBPalette16 GreenAuroraColors_p FL_PROGMEM = {0x000000, 0x003300, 0x006600, 0x009900, 0x00cc00, 0x00ff00, 0x33ff00, 0x66ff00, 0x99ff00, 0xccff00, 0xffff00, 0xffcc00, 0xff9900, 0xff6600, 0xff3300, 0xff0000};
- const static TProgmemRGBPalette16 WoodFireColors_p FL_PROGMEM = {CRGB::Black, 0x330e00, 0x661c00, 0x992900, 0xcc3700, CRGB::OrangeRed, 0xff5800, 0xff6b00, 0xff7f00, 0xff9200, CRGB::Orange, 0xffaf00, 0xffb900, 0xffc300, 0xffcd00, CRGB::Gold};             //* Orange
- const static TProgmemRGBPalette16 NormalFire_p FL_PROGMEM = {CRGB::Black, 0x330000, 0x660000, 0x990000, 0xcc0000, CRGB::Red, 0xff0c00, 0xff1800, 0xff2400, 0xff3000, 0xff3c00, 0xff4800, 0xff5400, 0xff6000, 0xff6c00, 0xff7800};                             // пытаюсь сделать что-то более приличное
- const static TProgmemRGBPalette16 NormalFire2_p FL_PROGMEM = {CRGB::Black, 0x560000, 0x6b0000, 0x820000, 0x9a0011, CRGB::FireBrick, 0xc22520, 0xd12a1c, 0xe12f17, 0xf0350f, 0xff3c00, 0xff6400, 0xff8300, 0xffa000, 0xffba00, 0xffd400};                      // пытаюсь сделать что-то более приличное
- const static TProgmemRGBPalette16 LithiumFireColors_p FL_PROGMEM = {CRGB::Black, 0x240707, 0x470e0e, 0x6b1414, 0x8e1b1b, CRGB::FireBrick, 0xc14244, 0xd16166, 0xe08187, 0xf0a0a9, CRGB::Pink, 0xff9ec0, 0xff7bb5, 0xff59a9, 0xff369e, CRGB::DeepPink};        //* Red
- const static TProgmemRGBPalette16 SodiumFireColors_p FL_PROGMEM = {CRGB::Black, 0x332100, 0x664200, 0x996300, 0xcc8400, CRGB::Orange, 0xffaf00, 0xffb900, 0xffc300, 0xffcd00, CRGB::Gold, 0xf8cd06, 0xf0c30d, 0xe9b913, 0xe1af1a, CRGB::Goldenrod};           //* Yellow
- const static TProgmemRGBPalette16 CopperFireColors_p FL_PROGMEM = {CRGB::Black, 0x001a00, 0x003300, 0x004d00, 0x006600, CRGB::Green, 0x239909, 0x45b313, 0x68cc1c, 0x8ae626, CRGB::GreenYellow, 0x94f530, 0x7ceb30, 0x63e131, 0x4bd731, CRGB::LimeGreen};     //* Green
- const static TProgmemRGBPalette16 ZAlcoholFireColors_p FL_PROGMEM = {CRGB::Black, 0x000033, 0x000066, 0x000099, 0x0000cc, CRGB::Blue, 0x0026ff, 0x004cff, 0x0073ff, 0x0099ff, CRGB::DeepSkyBlue, 0x1bc2fe, 0x36c5fd, 0x51c8fc, 0x6ccbfb, CRGB::LightSkyBlue};  //* Blue
- const static TProgmemRGBPalette16 ZRubidiumFireColors_p FL_PROGMEM = {CRGB::Red, 0x0f001a, 0x1e0034, 0x2d004e, 0x3c0068, CRGB::Red, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, 0x3c0084, 0x2d0086, 0x1e0087, 0x0f0089, CRGB::Red};        //* Indigo
-const static TProgmemRGBPalette16 darkishColors_p FL_PROGMEM = {0xFFcbbcaa,0xFF72ac92,0xFF797997,0xFF756372,0xFF638d54,0xFF606a40,0xFF4e4843,0xFF1a2f27,0xFFb6a588,0xFFa7889f,0xFFa17b6d,0xFF877041,0xFF725356,0xFF4e372c,0xFF3e2230,0xFF000000};
-const static TProgmemRGBPalette16 sixteen1Colors_p FL_PROGMEM = {0xFF53437f,0xFFa89fcc,0xFFffffff,0xFFffd9e8,0xFFff9bb6,0xFF9968e2,0xFFbe9bff,0xFF7fceff,0xFF6d81ff,0xFF2c6f99,0xFF00bcaa,0xFFc48f9e,0xFF8e586f,0xFFff5470,0xFFff9b71,0xFFffd9ae};
-const static TProgmemRGBPalette16 sixteen2Colors_p FL_PROGMEM = {0xFF4d004c,0xFF8f0076,0xFFc70083,0xFFf50078,0xFFff4764,0xFFff9393,0xFFffd5cc,0xFFfff3f0,0xFF000221,0xFF000769,0xFF00228f,0xFF0050c7,0xFF008bf5,0xFF00bbff,0xFF47edff,0xFF93fff8};
-const static TProgmemRGBPalette16 sixteen3Colors_p FL_PROGMEM = {0xFF000000,0xFF7e7e7e,0xFFbebebe,0xFFffffff,0xFF7e0000,0xFFfe0000,0xFF047e00,0xFF06ff04,0xFF7e7e00,0xFFffff04,0xFF00007e,0xFF0000ff,0xFF7e007e,0xFFfe00ff,0xFF047e7e,0xFF06ffff};
-const static TProgmemRGBPalette16 sixteen4Colors_p FL_PROGMEM = {0xFF2a1e1e,0xFF664933,0xFF28291d,0xFF576632,0xFF251d29,0xFF643266,0xFF291d22,0xFF663237,0xFF29221d,0xFF665932,0xFF1d2629,0xFF324b66,0xFF1d2920,0xFF32664d,0xFF1f1d29,0xFF483266};
-const static TProgmemRGBPalette16 sixteen5Colors_p FL_PROGMEM = {0xFF313432,0xFF323e42,0xFF454b4b,0xFF3a5f3b,0xFF7c4545,0xFF675239,0xFF625055,0xFF516b43,0xFF796c64,0xFF718245,0xFF9e805c,0xFF998579,0xFFac9086,0xFFa6a296,0xFFb4ab8f,0xFFbcb7a5};
-const static TProgmemRGBPalette16 sixteen6Colors_p FL_PROGMEM = {0X42243c,0X4e253d,0X59263d,0X64273a,0X6d2936,0X752d30,0X7c3228,0X803a1f,0X814214,0X804c04,0X7c5700,0X756100,0X6b6c00,0X5e7600,0X4b8000,0X2c8a00};
-const static TProgmemRGBPalette16 sixteen7Colors_p FL_PROGMEM = {0Xff0000,0Xfd3500,0Xfa4e00,0Xf66300,0Xef7600,0Xe68600,0Xdd9500,0Xd4a300,0Xc9b000,0Xbdbc00,0Xb0c800,0Xa1d300,0X8fdf00,0X76ea00,0X54f500,0X04ff00};
-const static TProgmemRGBPalette16 sixteen8Colors_p FL_PROGMEM = {0X0036ff,0X5023e6,0X6904ce,0X7600b6,0X7b009a,0X7a0081,0X77006c,0X72005b,0X6c004c,0X65003e,0X5e0033,0X570028,0X50001e,0X450017,0X3b030f,0X300808};
-const TProgmemRGBPalette16* currentPalette_p = &GreenAuroraColors_p;
-
-void SetNewPalette(int _palcount)
-{  
-  switch (_palcount)
-  {    
-  case 0:    
-    currentPalette_p = &GreenAuroraColors_p;
-    break;
-  case 1:
-    currentPalette_p = &WoodFireColors_p;
-    break;
-  case 2:
-    currentPalette_p = &NormalFire_p;
-    break;
-  case 3:
-    currentPalette_p = &NormalFire2_p;
-    break;
-  case 4:
-    currentPalette_p = &LithiumFireColors_p;
-    break;
-  case 5:
-    currentPalette_p = &SodiumFireColors_p;
-    break;
-  case 6:
-    currentPalette_p = &CopperFireColors_p;
-    break;
-  case 7:
-    currentPalette_p = &ZAlcoholFireColors_p;
-    break;
-  case 8:
-    currentPalette_p = &ZRubidiumFireColors_p;
-    break;
-  case 9:
-    currentPalette_p = &PartyColors_p;
-    break;
-  case 10:
-    currentPalette_p = &CloudColors_p;
-    break;
-  case 11:
-    currentPalette_p = &LavaColors_p;
-    break;
-  case 12:
-    currentPalette_p = &OceanColors_p;
-    break;
-  case 13:
-    currentPalette_p = &ForestColors_p;
-    break;
-  case 14:
-    currentPalette_p = &RainbowColors_p;
-    break;
-  case 15:
-    currentPalette_p = &RainbowStripeColors_p;
-    break; 
-  case 16:
-  currentPalette_p = &darkishColors_p;
-  break;
-  case 17:
-  currentPalette_p = &sixteen1Colors_p;
-  break;
-  case 18:
-  currentPalette_p = &sixteen2Colors_p;
-  break;
-  case 19:
-  currentPalette_p = &sixteen3Colors_p;
-  break;
-  case 20:
-  currentPalette_p = &sixteen4Colors_p;
-  break;
-  case 21:
-  currentPalette_p = &sixteen5Colors_p;
-  break;  
-  case 22:
-  currentPalette_p = &sixteen6Colors_p;
-  break;
-  case 23:
-  currentPalette_p = &sixteen7Colors_p;
-  break;
-  case 24:
-  currentPalette_p = &sixteen8Colors_p;
-  break;
-
-  default:
-    currentPalette_p = &GreenAuroraColors_p;
-    break;
-  }
-}
-#pragma endregion
-//end of pallet definitions and swapping
-#pragma region 
-//vec2 template class for vector math operations
-template <class T>
-class vec2 {
-  public:
-    T x, y;
-    
-    vec2() :x(0), y(0) {}
-    vec2(T x, T y) : x(x), y(y) {}
-    vec2(const vec2& v) : x(v.x), y(v.y) {}
-    
-    vec2& operator=(const vec2& v) {
-      x = v.x;
-      y = v.y;
-      return *this;
-    }
-      bool operator==(vec2& v) {
-          return x == v.x && y == v.y;
-      }
-
-      bool operator!=(vec2& v) {
-          return !(x == y);
-      }
-    
-    vec2 operator+(vec2& v) {
-      return vec2(x + v.x, y + v.y);
-    }
-    vec2 operator-(vec2& v) {
-      return vec2(x - v.x, y - v.y);
-    }	
-    vec2& operator+=(vec2& v) {
-      x += v.x;
-      y += v.y;
-      return *this;
-    }
-    vec2& operator-=(vec2& v) {
-      x -= v.x;
-      y -= v.y;
-      return *this;
-    }	
-    vec2 operator+(double s) {
-      return vec2(x + s, y + s);
-    }
-    vec2 operator-(double s) {
-      return vec2(x - s, y - s);
-    }
-    vec2 operator*(double s) {
-      return vec2(x * s, y * s);
-    }
-    vec2 operator/(double s) {
-      return vec2(x / s, y / s);
-    }
-    vec2& operator+=(double s) {
-      x += s;
-      y += s;
-      return *this;
-    }
-    vec2& operator-=(double s) {
-      x -= s;
-      y -= s;
-      return *this;
-    }
-    vec2& operator*=(double s) {
-      x *= s;
-      y *= s;
-      return *this;
-    }
-    vec2& operator/=(double s) {
-      x /= s;
-      y /= s;
-      return *this;
-    }
-
-    void set(T x, T y) {
-      this->x = x;
-      this->y = y;
-    }
-        void rotateAroundPoint(T cx, T cy, double deg) {
-        double theta = deg / 180.0 * M_PI;  // Convert degrees to radians
-        double c = cos(theta);
-        double s = sin(theta);
-
-        // Translate point back to the origin:
-        x -= cx;
-        y -= cy;
-
-        // Rotate point
-        double tx = x * c - y * s;
-        double ty = x * s + y * c;
-
-        // Translate point back to the original location
-        x = tx + cx;
-        y = ty + cy;
-    }
-    
-    void rotate(double deg) {
-      double theta = deg / 180.0 * M_PI;
-      double c = cos(theta);
-      double s = sin(theta);
-      double tx = x * c - y * s;
-      double ty = x * s + y * c;
-      x = tx;
-      y = ty;
-    }
-  //this is the fast inverse square root. 
-    float Q_rsqrt( float number )
-    {
-          long i;
-          float x2, y;
-          const float threehalfs = 1.5F;
-  
-          x2 = number * 0.5F;
-          y  = number;
-          i  = * ( long * ) &y;                       // evil floating point bit level hacking
-          i  = 0x5f3759df - ( i >> 1 );               // what the fuck?
-          y  = * ( float * ) &i;
-          y  = y * ( threehalfs - ( x2 * y * y ) );   // 1st iteration
-  
-          return y;
-  }
-    float length() const {
-      return sqrt(x * x + y * y);
-    }
-    vec2& normalize() {
-      if (length() == 0) return *this;
-      *this *= (1.0 / length());// Q_rsqrt(x * x + y * y); // --> this is the slow way to normalize  (1.0 / length());
-      return *this;
-    }
-    
-    float dist(vec2 v) const {
-      vec2 d(v.x - x, v.y - y);
-      return d.length();
-    }
-
-
-    void truncate(double length) {
-      double angle = atan2f(y, x);
-      x = length * cos(angle);
-      y = length * sin(angle);
-    }
-    
-    vec2 ortho() const {
-      return vec2(y, -x);
-    }
-    
-    static float dot(vec2 v1, vec2 v2) {
-      return v1.x * v2.x + v1.y * v2.y;
-    }
-    static float cross(vec2 v1, vec2 v2) {
-      return (v1.x * v2.y) - (v1.y * v2.x);
-    }
-    void makePositive() {
-        if (x < 0) x = -x; // Flip x to positive if negative
-        if (y < 0) y = -y; // Flip y to positive if negative
-    }
-
-    float mag() const {
-        return length();
-    }
-
-    float magSq() {
-          return (x * x + y * y);
-    }
-
-    void limit(float max) {
-      if (magSq() > max*max) {
-          normalize();
-          *this *= max;
-      }
-  }	
-};
-///end of vec2 template class
-#pragma endregion
-
 typedef vec2<float> PVector;
 typedef vec2<double> vec2d;
+
 // Define the viewport size (same as your physical display)
 //boid class to make the particles interact with eaother
 #pragma region
@@ -739,6 +456,116 @@ void drawPixelXYF(float virtualX, float virtualY, CRGB color) {
 ///end of pixel mapping functions
 #pragma endregion
 
+#pragma region 
+///Pallet definitinos and swapping
+const static TProgmemRGBPalette16 GreenAuroraColors_p FL_PROGMEM = {0x000000, 0x003300, 0x006600, 0x009900, 0x00cc00, 0x00ff00, 0x33ff00, 0x66ff00, 0x99ff00, 0xccff00, 0xffff00, 0xffcc00, 0xff9900, 0xff6600, 0xff3300, 0xff0000};
+const static TProgmemRGBPalette16 WoodFireColors_p FL_PROGMEM = {CRGB::Black, 0x330e00, 0x661c00, 0x992900, 0xcc3700, CRGB::OrangeRed, 0xff5800, 0xff6b00, 0xff7f00, 0xff9200, CRGB::Orange, 0xffaf00, 0xffb900, 0xffc300, 0xffcd00, CRGB::Gold};             //* Orange
+const static TProgmemRGBPalette16 NormalFire_p FL_PROGMEM = {CRGB::Black, 0x330000, 0x660000, 0x990000, 0xcc0000, CRGB::Red, 0xff0c00, 0xff1800, 0xff2400, 0xff3000, 0xff3c00, 0xff4800, 0xff5400, 0xff6000, 0xff6c00, 0xff7800};                             // пытаюсь сделать что-то более приличное
+const static TProgmemRGBPalette16 NormalFire2_p FL_PROGMEM = {CRGB::Black, 0x560000, 0x6b0000, 0x820000, 0x9a0011, CRGB::FireBrick, 0xc22520, 0xd12a1c, 0xe12f17, 0xf0350f, 0xff3c00, 0xff6400, 0xff8300, 0xffa000, 0xffba00, 0xffd400};                      // пытаюсь сделать что-то более приличное
+const static TProgmemRGBPalette16 LithiumFireColors_p FL_PROGMEM = {CRGB::Black, 0x240707, 0x470e0e, 0x6b1414, 0x8e1b1b, CRGB::FireBrick, 0xc14244, 0xd16166, 0xe08187, 0xf0a0a9, CRGB::Pink, 0xff9ec0, 0xff7bb5, 0xff59a9, 0xff369e, CRGB::DeepPink};        //* Red
+const static TProgmemRGBPalette16 SodiumFireColors_p FL_PROGMEM = {CRGB::Black, 0x332100, 0x664200, 0x996300, 0xcc8400, CRGB::Orange, 0xffaf00, 0xffb900, 0xffc300, 0xffcd00, CRGB::Gold, 0xf8cd06, 0xf0c30d, 0xe9b913, 0xe1af1a, CRGB::Goldenrod};           //* Yellow
+const static TProgmemRGBPalette16 CopperFireColors_p FL_PROGMEM = {CRGB::Black, 0x001a00, 0x003300, 0x004d00, 0x006600, CRGB::Green, 0x239909, 0x45b313, 0x68cc1c, 0x8ae626, CRGB::GreenYellow, 0x94f530, 0x7ceb30, 0x63e131, 0x4bd731, CRGB::LimeGreen};     //* Green
+const static TProgmemRGBPalette16 ZAlcoholFireColors_p FL_PROGMEM = {CRGB::Black, 0x000033, 0x000066, 0x000099, 0x0000cc, CRGB::Blue, 0x0026ff, 0x004cff, 0x0073ff, 0x0099ff, CRGB::DeepSkyBlue, 0x1bc2fe, 0x36c5fd, 0x51c8fc, 0x6ccbfb, CRGB::LightSkyBlue};  //* Blue
+const static TProgmemRGBPalette16 ZRubidiumFireColors_p FL_PROGMEM = {CRGB::Red, 0x0f001a, 0x1e0034, 0x2d004e, 0x3c0068, CRGB::Red, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, 0x3c0084, 0x2d0086, 0x1e0087, 0x0f0089, CRGB::Red};        //* Indigo
+const static TProgmemRGBPalette16 darkishColors_p FL_PROGMEM = {0xFFcbbcaa,0xFF72ac92,0xFF797997,0xFF756372,0xFF638d54,0xFF606a40,0xFF4e4843,0xFF1a2f27,0xFFb6a588,0xFFa7889f,0xFFa17b6d,0xFF877041,0xFF725356,0xFF4e372c,0xFF3e2230,0xFF000000};
+const static TProgmemRGBPalette16 sixteen1Colors_p FL_PROGMEM = {0xFF53437f,0xFFa89fcc,0xFFffffff,0xFFffd9e8,0xFFff9bb6,0xFF9968e2,0xFFbe9bff,0xFF7fceff,0xFF6d81ff,0xFF2c6f99,0xFF00bcaa,0xFFc48f9e,0xFF8e586f,0xFFff5470,0xFFff9b71,0xFFffd9ae};
+const static TProgmemRGBPalette16 sixteen2Colors_p FL_PROGMEM = {0xFF4d004c,0xFF8f0076,0xFFc70083,0xFFf50078,0xFFff4764,0xFFff9393,0xFFffd5cc,0xFFfff3f0,0xFF000221,0xFF000769,0xFF00228f,0xFF0050c7,0xFF008bf5,0xFF00bbff,0xFF47edff,0xFF93fff8};
+const static TProgmemRGBPalette16 sixteen3Colors_p FL_PROGMEM = {0xFF000000,0xFF7e7e7e,0xFFbebebe,0xFFffffff,0xFF7e0000,0xFFfe0000,0xFF047e00,0xFF06ff04,0xFF7e7e00,0xFFffff04,0xFF00007e,0xFF0000ff,0xFF7e007e,0xFFfe00ff,0xFF047e7e,0xFF06ffff};
+const static TProgmemRGBPalette16 sixteen4Colors_p FL_PROGMEM = {0xFF2a1e1e,0xFF664933,0xFF28291d,0xFF576632,0xFF251d29,0xFF643266,0xFF291d22,0xFF663237,0xFF29221d,0xFF665932,0xFF1d2629,0xFF324b66,0xFF1d2920,0xFF32664d,0xFF1f1d29,0xFF483266};
+const static TProgmemRGBPalette16 sixteen5Colors_p FL_PROGMEM = {0xFF313432,0xFF323e42,0xFF454b4b,0xFF3a5f3b,0xFF7c4545,0xFF675239,0xFF625055,0xFF516b43,0xFF796c64,0xFF718245,0xFF9e805c,0xFF998579,0xFFac9086,0xFFa6a296,0xFFb4ab8f,0xFFbcb7a5};
+const static TProgmemRGBPalette16 sixteen6Colors_p FL_PROGMEM = {0X42243c,0X4e253d,0X59263d,0X64273a,0X6d2936,0X752d30,0X7c3228,0X803a1f,0X814214,0X804c04,0X7c5700,0X756100,0X6b6c00,0X5e7600,0X4b8000,0X2c8a00};
+const static TProgmemRGBPalette16 sixteen7Colors_p FL_PROGMEM = {0Xff0000,0Xfd3500,0Xfa4e00,0Xf66300,0Xef7600,0Xe68600,0Xd4a300,0Xc9b000,0Xbdbc00,0Xb0c800,0Xa1d300,0X8fdf00,0X76ea00,0X54f500,0X04ff00,0X00ff00};
+const static TProgmemRGBPalette16 sixteen8Colors_p FL_PROGMEM = {0X0036ff,0X5023e6,0X6904ce,0X7600b6,0X7b009a,0X7a0081,0X77006c,0X72005b,0X6c004c,0X65003e,0X5e0033,0X570028,0X50001e,0X450017,0X3b030f,0X300808};
+const TProgmemRGBPalette16* currentPalette_p = &GreenAuroraColors_p;
+
+void SetNewPalette(int _palcount)
+{  
+  switch (_palcount)
+  {    
+  case 0:    
+    currentPalette_p = &GreenAuroraColors_p;
+    break;
+  case 1:
+    currentPalette_p = &WoodFireColors_p;
+    break;
+  case 2:
+    currentPalette_p = &NormalFire_p;
+    break;
+  case 3:
+    currentPalette_p = &NormalFire2_p;
+    break;
+  case 4:
+    currentPalette_p = &LithiumFireColors_p;
+    break;
+  case 5:
+    currentPalette_p = &SodiumFireColors_p;
+    break;
+  case 6:
+    currentPalette_p = &CopperFireColors_p;
+    break;
+  case 7:
+    currentPalette_p = &ZAlcoholFireColors_p;
+    break;
+  case 8:
+    currentPalette_p = &ZRubidiumFireColors_p;
+    break;
+  case 9:
+    currentPalette_p = &PartyColors_p;
+    break;
+  case 10:
+    currentPalette_p = &CloudColors_p;
+    break;
+  case 11:
+    currentPalette_p = &LavaColors_p;
+    break;
+  case 12:
+    currentPalette_p = &OceanColors_p;
+    break;
+  case 13:
+    currentPalette_p = &ForestColors_p;
+    break;
+  case 14:
+    currentPalette_p = &RainbowColors_p;
+    break;
+  case 15:
+    currentPalette_p = &RainbowStripeColors_p;
+    break; 
+  case 16:
+  currentPalette_p = &darkishColors_p;
+  break;
+  case 17:
+  currentPalette_p = &sixteen1Colors_p;
+  break;
+  case 18:
+  currentPalette_p = &sixteen2Colors_p;
+  break;
+  case 19:
+  currentPalette_p = &sixteen3Colors_p;
+  break;
+  case 20:
+  currentPalette_p = &sixteen4Colors_p;
+  break;
+  case 21:
+  currentPalette_p = &sixteen5Colors_p;
+  break;  
+  case 22:
+  currentPalette_p = &sixteen6Colors_p;
+  break;
+  case 23:
+  currentPalette_p = &sixteen7Colors_p;
+  break;
+  case 24:
+  currentPalette_p = &sixteen8Colors_p;
+  break;
+
+  default:
+    currentPalette_p = &GreenAuroraColors_p;
+    break;
+  }
+}
+#pragma endregion
+//end of pallet definitions and swapping
+#pragma region 
 //attractor class to make the particles gravitate towards a certain point
 class Attractor {
   public:
@@ -771,7 +598,7 @@ void incrementMass() {
   if (delaytimer > massdelaywait) {
     mass += (mass / 8 );// + random(1,2)* massdir;
     G += 0.5 * gdir;
-    if (G > 4 || G < 0.10) gdir = -gdir;//G = mass;
+    if (G > 4 || G < 0.50) gdir = -gdir;//G = mass;
   } 
   if (mass > massdelay) 
   {
