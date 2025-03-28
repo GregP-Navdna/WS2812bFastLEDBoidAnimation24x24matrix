@@ -3,6 +3,8 @@
 #include <Math.h>
 #include <vector>
 #include "vec2.h"
+#include "boid.h"
+#include "lookup_tables.h"
 
 float stepcount = 0.3;
 uint8_t fadebyvalue = random(110,120 );
@@ -23,7 +25,7 @@ int maxspeeddir = 1;
 float maxspeed; // Maximum speed
 float currgravity = 1.90;
 float currmass = 20;
-#define NUM_PARTICLES 60
+#define NUM_PARTICLES 100
 uint8_t speed = 1;
 uint8_t count = 50;
 uint8_t boidseperation = 3;
@@ -55,408 +57,7 @@ int bran = random(1.5F, 4.0F);
 
 typedef vec2<float> PVector;
 typedef vec2<double> vec2d;
-
-// Define the viewport size (same as your physical display)
-//boid class to make the particles interact with eaother
 #pragma region
-class Boid
-{
-  public:
-    PVector location;
-    PVector velocity;
-    PVector acceleration;
-    float maxforce; // Maximum steering force
-    uint8_t brightness;
-    int hue;
-    float desiredseparation = 3; // this this is the variable that keeps the boids at a certain distance from eachother. the higher the number the more space between. keep this lower than the neighbor distance otherwise the boids will probably not move.
-    float neighbordist = 8;      // this will determine the length that a boid will interact with another boid. the lower the number the more isolated the boid will be. the higher the number the boid will interact with another boid at a further distance.
-    byte colorIndex = 0;
-    //float scale;
-    float mass;
-    //float bounce = 1;
-    boolean enabled = true;
-
-    Boid() {}
-
-    Boid(float x, float y)
-    {
-      acceleration = PVector(0, 0);
-      velocity = PVector(randomf(), randomf());
-      location = PVector(x, y);
-      maxspeed = 2.2;
-      maxforce = 0.28;
-      brightness = 255;
-      //scale = random(0.5, 68.5);
-    //  bounce = random(2.1, 2.5);
-      mass = random(1.0, 3.0);
-      hue = random(10, 255);
-    }
-
-    static float randomf()
-    {
-      return mapfloat(random(0, 255), 0, 255, -.5, .5);
-    }
-
-    static float mapfloat(float x, float in_min, float in_max, float out_min, float out_max)
-    {
-      return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-    }
-
-    void run(Boid boids[], uint8_t boidCount)
-    {
-      flock(boids, boidCount);
-    }
-    // Method to update location
-    void update(Boid boids[], uint8_t boidCount)
-    {
-      flock(boids, boidCount);
-      velocity += acceleration;
-      velocity.limit(maxspeed);
-      location += velocity;
-      acceleration *= 0;
-    }
-
-    void applyForce(PVector force)
-    {
-      // We could add mass here if we want A = F / M
-      acceleration += force;//(force.x / mass)+ (force.y / mass);
-    }
-
-    void repelForce(PVector obstacle, float radius)
-    {
-      // Force that drives boid away from obstacle.
-
-      PVector futPos = location + velocity; // Calculate future position for more effective behavior.
-      PVector dist = obstacle - futPos;
-      float d = dist.mag();
-
-      if (d <= radius)
-      {
-        PVector repelVec = location - obstacle;
-        repelVec.normalize(); // no more slow 1/sqrt(float)  to normalize
-        if (d != 0)
-        { // Don't divide by zero.
-          // float boid->boid.scale = 1.0 / d; //The closer to the obstacle, the stronger the force.
-          repelVec.normalize(); // no more slow 1/sqrt(float)  to normalize
-          repelVec *= (maxforce * 7);
-          if (repelVec.mag() < 0)
-          { // Don't let the boids turn around to avoid the obstacle.
-            repelVec.y = 0;
-          }
-        }
-        applyForce(repelVec);
-      }
-    }
-
-    // We accumulate a new acceleration each time based on three rules
-    void flock(Boid boids[], uint8_t boidCount)
-    {
-      PVector sep = separate(boids, boidCount); // Separation
-      PVector ali = align(boids, boidCount);    // Alignment
-      PVector coh = cohesion(boids, boidCount); // Cohesion
-      // Arbitrarily weight these forces
-      sep *= separa; // 2.8; //change these to change the behavior of the flock
-      ali *= alignm; // 1.2; //
-      coh *= cohesi; // 1.2; //
-      // Add the force vectors to acceleration
-      applyForce(sep);
-      applyForce(ali);
-      applyForce(coh);
-    }
-
-    // Separation
-    // Method checks for nearby boids and steers away
-    PVector separate(Boid boids[], uint8_t boidCount)
-    {
-      PVector steer = PVector(0, 0);
-      int count = 0;
-     
-      // For every boid in the system, check if it's too close
-      for (int i = 0; i < boidCount; i++)
-      {
-        Boid other = boids[i];
-        if (!other.enabled)
-          continue;
-        float d = location.dist(other.location);
-        // If the distance is greater than 0 and less than an arbitrary amount (0 when you are yourself)
-        if ((d > 0) && (d < desiredseparation))
-        {
-          // Calculate vector pointing away from neighbor
-          PVector diff = location - other.location;
-          diff.normalize();
-          diff /= d; // Weight by distance
-          steer += diff;
-          count++; // Keep track of how many
-        }
-      }
-      // Average -- divide by how many
-      if (count > 0)
-      {
-        steer /= (float)count;
-      }
-
-      // As long as the vector is greater than 0
-      if (steer.mag() > 0)
-      {
-        // Implement Reynolds: Steering = Desired - Velocity
-        steer.normalize(); // no more slow 1/sqrt(float)  to normalize
-        steer *= maxspeed;
-        steer -= velocity;
-        steer.limit(maxforce);
-      }
-      return steer;
-    }
-
-    // Alignment
-    PVector align(Boid boids[], uint8_t boidCount)
-    { // For every nearby boid in the system, calculate the average velocity
-      PVector sum = PVector(0, 0);
-      int count = 0;
-      for (int i = 0; i < boidCount; i++)
-      {
-        Boid other = boids[i];
-        if (!other.enabled)
-          continue;
-        float d = location.dist(other.location);
-        if ((d > 0) && (d < neighbordist))
-        {
-          sum += other.velocity;
-          count++;
-        }
-      }
-      if (count > 0)
-      {
-        sum /= (float)count;
-        sum.normalize(); // no more slow 1/sqrt(float)  to normalize
-        sum *= maxspeed;
-        PVector steer = sum - velocity;
-        steer.limit(maxforce);
-        return steer;
-      }
-      else
-      {
-        return PVector(0, 0);
-      }
-    }
-    // Cohesion
-    PVector cohesion(Boid boids[], uint8_t boidCount)
-    {                              // For the average location (i.e. center) of all nearby boids, calculate steering vector towards that location
-      PVector sum = PVector(0, 0); // Start with empty vector to accumulate all locations
-      int count = 0;
-      for (int i = 0; i < boidCount; i++)
-      {
-        Boid other = boids[i];
-        if (!other.enabled)
-          continue;
-        float d = location.dist(other.location);
-        if ((d > 0) && (d < neighbordist))
-        {
-          sum += other.location; // Add location
-          count++;
-        }
-      }
-      if (count > 0)
-      {
-        sum /= count;
-        return seek(sum); // Steer towards the location
-      }
-      else
-      {
-        return PVector(0, 0);
-      }
-    }
-
-    // A method that calculates and applies a steering force towards a target
-    // STEER = DESIRED MINUS VELOCITY
-    PVector seek(PVector target)
-    {
-      PVector desired = target - location; // A vector pointing from the location to the target
-      // Normalize desired and boid->boid.scale to maximum speed
-      desired.normalize(); // no more slow 1/sqrt(float)  to normalize
-      desired *= maxspeed;
-      // Steering = Desired minus Velocity
-      PVector steer = desired - velocity;
-      steer.limit(maxforce); // Limit to maximum steering force
-      return steer;
-    }
-
-    // A method that calculates a steering force towards a target
-    // STEER = DESIRED MINUS VELOCITY
-    void arrive(PVector target)
-    {
-      PVector desired = target - location; // A vector pointing from the location to the target
-      float d = desired.mag();
-      // Normalize desired and boid->boid.scale with arbitrary damping within 100 pixels
-      desired.normalize(); // no more slow 1/sqrt(float)  to normalize
-      if (d < 4)
-      {
-        float m = map(d, 0, 100, 0, maxspeed);
-        desired *= m;
-      }
-      else
-      {
-        desired *= maxspeed;
-      }
-
-      // Steering = Desired minus Velocity
-      PVector steer = desired - velocity;
-      steer.limit(maxforce); // Limit to maximum steering force
-      applyForce(steer);
-    }
-    // bool bounceOffBorders()
-    // {
-    //   bool bounced = false;
-
-    //   if (location.x >= COLS)
-    //   {
-    //     location.x = COLS - 1;
-    //     velocity.x *= -bounce;
-    //     bounced = true;
-    //   }
-    //   else if (location.x < 0)
-    //   {
-    //     location.x = 0;
-    //     velocity.x *= -bounce;
-    //     bounced = true;
-    //   }
-
-    //   if (location.y >= ROWS)
-    //   {
-    //     location.y = ROWS - 1;
-    //     velocity.y *= -bounce;
-    //     bounced = true;
-    //   }
-    //   else if (location.y < 0)
-    //   {
-    //     location.y = 0;
-    //     velocity.y *= -bounce;
-    //     bounced = true;
-    //   }
-    //   return bounced;
-    // }
-    
-  void wrapAroundBorders()
-  {
-    if (location.x < 0) location.x += VIRTUAL_ROWS;
-    if (location.y < 0) location.y += VIRTUAL_COLS;
-    if (location.x >= VIRTUAL_ROWS) location.x -= VIRTUAL_ROWS;
-    if (location.y >= VIRTUAL_COLS) location.y -= VIRTUAL_COLS;
-  }
-
-    void avoidBorders()
-    {
-      PVector desired = velocity;
-
-      if (location.x < 8)
-        desired = PVector(maxspeed, velocity.y);
-      if (location.x >= ROWS - 8)
-        desired = PVector(-maxspeed, velocity.y);
-      if (location.y < 8)
-        desired = PVector(velocity.x, maxspeed);
-      if (location.y >= COLS - 8)
-        desired = PVector(velocity.x, -maxspeed);
-
-      if (desired != velocity)
-      {
-        PVector steer = desired - velocity;
-        steer.limit(maxforce);
-        applyForce(steer);
-      }
-
-      if (location.x < 0)
-        location.x = 0;
-      if (location.y < 0)
-        location.y = 0;
-      if (location.x >= ROWS)
-        location.x = ROWS - 1;
-      if (location.y >= COLS)
-        location.y = COLS - 1;
-    }
-    void render()
-    {
-    }
-};
-/// end of boid class
-#pragma endregion
-#pragma region
-//start of pixel mapping functions
-uint16_t XY(uint8_t x, uint8_t y)
-{
-  uint16_t i;
-  if (kMatrixSerpentineLayout == false)
-  {
-    i = (y * ROWS) + x;
-  }
-  if (kMatrixSerpentineLayout == true)
-  {
-    if (y & 0x01)
-    {
-      // Odd rows run backwards
-      uint8_t reverseX = (ROWS - 1) - x;
-      i = (y * ROWS) + reverseX;
-    }
-    else
-    {
-      // Even rows run forwards
-      i = (y * ROWS) + x;
-    }
-  }
-  return i;
-}
-
-uint32_t getPixColor(uint32_t thisSegm)
-{
-  uint32_t thisPixel = thisSegm;
-  if (thisPixel > NUM_LEDS - 1)
-    return 0;
-  return (((uint32_t)leds[thisPixel].r << 16) | ((uint32_t)leds[thisPixel].g << 8) | (uint32_t)leds[thisPixel].b);
-}
-uint32_t getPixColorXY(uint8_t x, uint8_t y)
-{
-  return getPixColor(XY(x, y));
-}
-
-void drawPixelXY(int8_t x, int8_t y, CRGB color)
-{
- 
- 
-  if (x < 0 || x > (ROWS - 1) || y < 0 || y > (COLS - 1))
-    return;
-  uint32_t thisPixel = XY((uint8_t)x, (uint8_t)y);
-  leds[thisPixel] = color;
-}
-void drawPixelXYF(float virtualX, float virtualY, CRGB color) {
-  // Map virtual coordinates to the current view/window of the virtual space
-    float mappedX = virtualX - virtualViewX; // Example mapping, adjust virtualViewX/Y based on your logic
-    float mappedY = virtualY - virtualViewY;
-
-    // Check if the mapped coordinates are within the physical display bounds
-    //if(mappedX < 0 || mappedX >= ROWS || mappedY < 0 || mappedY >= COLS) return; // Skip if outside physical display
-  if(mappedX >= 0 && mappedX < VIEWPORT_COLS && mappedY >= 0 && mappedY < VIEWPORT_ROWS) {
-    // Perform Wu's algorithm on the mapped coordinates
-    #define WU_WEIGHT(a, b) ((uint8_t)(((a) * (b) + (a) + (b)) >> 8))
-    uint8_t xx = (mappedX - (int)mappedX) * 255, yy = (mappedY - (int)mappedY) * 255, ix = 255 - xx, iy = 255 - yy;
-    uint8_t wu[4] = {WU_WEIGHT(ix, iy), WU_WEIGHT(xx, iy),
-                    WU_WEIGHT(ix, yy), WU_WEIGHT(xx, yy)};
-
-    for (uint8_t i = 0; i < 4; i++) {
-      int16_t xn = mappedX + (i & 1), yn = mappedY + ((i >> 1) & 1);
-
-      // Ensure xn, yn within physical display bounds before blending
-      if(xn >= 0 && xn < ROWS && yn >= 0 && yn < COLS) {
-        CRGB clr = getPixColorXY(xn, yn);
-        clr.r = qadd8(clr.r, (color.r * wu[i]) >> 8);
-        clr.g = qadd8(clr.g, (color.g * wu[i]) >> 8);
-        clr.b = qadd8(clr.b, (color.b * wu[i]) >> 8);
-        drawPixelXY(xn, yn, clr); // Make sure drawPixelXY checks bounds if not already
-      }
-    }
-  }
-}
-///end of pixel mapping functions
-#pragma endregion
-
-#pragma region 
 ///Pallet definitinos and swapping
 const static TProgmemRGBPalette16 GreenAuroraColors_p FL_PROGMEM = {0x000000, 0x003300, 0x006600, 0x009900, 0x00cc00, 0x00ff00, 0x33ff00, 0x66ff00, 0x99ff00, 0xccff00, 0xffff00, 0xffcc00, 0xff9900, 0xff6600, 0xff3300, 0xff0000};
 const static TProgmemRGBPalette16 WoodFireColors_p FL_PROGMEM = {CRGB::Black, 0x330e00, 0x661c00, 0x992900, 0xcc3700, CRGB::OrangeRed, 0xff5800, 0xff6b00, 0xff7f00, 0xff9200, CRGB::Orange, 0xffaf00, 0xffb900, 0xffc300, 0xffcd00, CRGB::Gold};             //* Orange
@@ -564,8 +165,86 @@ void SetNewPalette(int _palcount)
   }
 }
 #pragma endregion
+// Define the viewport size (same as your physical display)
+//boid class to make the particles interact with eaother
+#pragma region
+// Boid class has been moved to boid.h
 //end of pallet definitions and swapping
 #pragma region 
+///start of pixel mapping functions
+uint16_t XY(uint8_t x, uint8_t y)
+{
+  uint16_t i;
+  if (kMatrixSerpentineLayout == false)
+  {
+    i = (y * ROWS) + x;
+  }
+  if (kMatrixSerpentineLayout == true)
+  {
+    if (y & 0x01)
+    {
+      // Odd rows run backwards
+      uint8_t reverseX = (ROWS - 1) - x;
+      i = (y * ROWS) + reverseX;
+    }
+    else
+    {
+      // Even rows run forwards
+      i = (y * ROWS) + x;
+    }
+  }
+  return i;
+}
+
+uint32_t getPixColor(uint32_t thisSegm)
+{
+  uint32_t thisPixel = thisSegm;
+  if (thisPixel > NUM_LEDS - 1)
+    return 0;
+  return (((uint32_t)leds[thisPixel].r << 16) | ((uint32_t)leds[thisPixel].g << 8) | (uint32_t)leds[thisPixel].b);
+}
+uint32_t getPixColorXY(uint8_t x, uint8_t y)
+{
+  return getPixColor(XY(x, y));
+}
+
+void drawPixelXY(int8_t x, int8_t y, CRGB color)
+{
+ 
+ 
+  if (x < 0 || x > (ROWS - 1) || y < 0 || y > (COLS - 1))
+    return;
+  uint32_t thisPixel = XY((uint8_t)x, (uint8_t)y);
+  leds[thisPixel] = color;
+}
+void drawPixelXYF(float virtualX, float virtualY, CRGB color) {
+  // Map virtual coordinates to the current view/window of the virtual space
+    float mappedX = virtualX - virtualViewX; // Example mapping, adjust virtualViewX/Y based on your logic
+    float mappedY = virtualY - virtualViewY;
+
+    // Check if the mapped coordinates are within the physical display bounds
+    //if(mappedX < 0 || mappedX >= ROWS || mappedY < 0 || mappedY >= COLS) return; // Skip if outside physical display
+  if(mappedX >= 0 && mappedX < VIEWPORT_COLS && mappedY >= 0 && mappedY < VIEWPORT_ROWS) {
+    // Perform Wu's algorithm on the mapped coordinates
+    #define WU_WEIGHT(a, b) ((uint8_t)(((a) * (b) + (a) + (b)) >> 8))
+    uint8_t xx = (mappedX - (int)mappedX) * 255, yy = (mappedY - (int)mappedY) * 255, ix = 255 - xx, iy = 255 - yy;
+    uint8_t wu[4] = {WU_WEIGHT(ix, iy), WU_WEIGHT(xx, iy),
+                    WU_WEIGHT(ix, yy), WU_WEIGHT(xx, yy)};
+
+    for (uint8_t i = 0; i < 4; i++) {
+      int16_t xn = mappedX + (i & 1), yn = mappedY + ((i >> 1) & 1);
+
+      // Ensure xn, yn within physical display bounds before blending
+      if(xn >= 0 && xn < ROWS && yn >= 0 && yn < COLS) {
+        CRGB clr = getPixColorXY(xn, yn);
+        clr.r = qadd8(clr.r, (color.r * wu[i]) >> 8);
+        clr.g = qadd8(clr.g, (color.g * wu[i]) >> 8);
+        clr.b = qadd8(clr.b, (color.b * wu[i]) >> 8);
+        drawPixelXY(xn, yn, clr); // Make sure drawPixelXY checks bounds if not already
+      }
+    }
+  }
+}
 //attractor class to make the particles gravitate towards a certain point
 class Attractor {
   public:
@@ -680,7 +359,7 @@ void movetoCenter()
           PVector force1 = attractor1.attract(*boid);
           boid->applyForce(force1);
           boid->update(boids, count);
-          boid->wrapAroundBorders();
+          boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
           drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, 255, LINEARBLEND_NOWRAP));
           boid->neighbordist = neidist;
           boid->desiredseparation = boidsep;
@@ -754,7 +433,7 @@ if (randomnum == 5) stopbool = true;
         PVector force5 = attractor5.attract(*boid);
                boid->applyForce(force5);
         boid->update(boids, count);
-        boid->wrapAroundBorders();
+        boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
         boid-> brightness = map(boid->velocity.x + boid->velocity.y,0,5,50,255);
 
         drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, boid->brightness, LINEARBLEND_NOWRAP));
@@ -793,3 +472,8 @@ void loop()
   LEDS.show();  
  
 }
+
+
+
+///end of pixel mapping functions
+#pragma endregion

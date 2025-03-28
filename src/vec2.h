@@ -2,7 +2,7 @@
 #define VEC2_H
 
 #include <Arduino.h>
-#include <Math.h>
+#include "lookup_tables.h" // Include our lookup tables
 
 //vec2 template class for vector math operations
 template <class T>
@@ -24,7 +24,7 @@ class vec2 {
     }
 
     bool operator!=(vec2& v) {
-        return x != v.x || y != v.y; // Fixed the buggy comparison
+        return x != v.x || y != v.y; 
     }
     
     vec2 operator+(vec2& v) {
@@ -81,9 +81,9 @@ class vec2 {
       this->y = y;
     }
     void rotateAroundPoint(T cx, T cy, double deg) {
-        double theta = deg / 180.0 * M_PI;  // Convert degrees to radians
-        double c = cos(theta);
-        double s = sin(theta);
+        double theta = deg / 180.0 * M_PI;  
+        double c = fastCos(fastRadToDegNorm(theta));
+        double s = fastSin(fastRadToDegNorm(theta));
 
         // Translate point back to the origin:
         x -= cx;
@@ -100,8 +100,8 @@ class vec2 {
     
     void rotate(double deg) {
       double theta = deg / 180.0 * M_PI;
-      double c = cos(theta);
-      double s = sin(theta);
+      double c = fastCos(fastRadToDegNorm(theta));
+      double s = fastSin(fastRadToDegNorm(theta));
       double tx = x * c - y * s;
       double ty = x * s + y * c;
       x = tx;
@@ -125,7 +125,7 @@ class vec2 {
     }
     
     float length() const {
-      return sqrt(x * x + y * y);
+      return fastSqrt(x * x + y * y);
     }
     
     vec2& normalize() {
@@ -140,9 +140,9 @@ class vec2 {
     }
 
     void truncate(double length) {
-      double angle = atan2f(y, x);
-      x = length * cos(angle);
-      y = length * sin(angle);
+      double angle = fastAtan2(y, x);
+      x = length * fastCos(fastRadToDegNorm(angle));
+      y = length * fastSin(fastRadToDegNorm(angle));
     }
     
     vec2 ortho() const {
@@ -158,8 +158,8 @@ class vec2 {
     }
     
     void makePositive() {
-        if (x < 0) x = -x; // Flip x to positive if negative
-        if (y < 0) y = -y; // Flip y to positive if negative
+        if (x < 0) x = -x; 
+        if (y < 0) y = -y; 
     }
 
     float mag() const {
