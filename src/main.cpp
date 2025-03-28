@@ -6,7 +6,7 @@
 #include "boid.h"
 #include "lookup_tables.h"
 
-float stepcount = 0.3;
+float stepcount = 0.1;
 uint8_t fadebyvalue = random(110,120 );
 uint8_t neidist = random(3,5);
 uint8_t boidsep = random(3,5);
@@ -25,7 +25,7 @@ int maxspeeddir = 1;
 float maxspeed; // Maximum speed
 float currgravity = 1.90;
 float currmass = 20;
-#define NUM_PARTICLES 100
+#define NUM_PARTICLES 60
 uint8_t speed = 1;
 uint8_t count = 50;
 uint8_t boidseperation = 3;
@@ -370,7 +370,7 @@ void movetoCenter()
       }
 
       //fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);  
-        fadeToColorBy(leds,NUM_LEDS,CRGB::Black,40);
+        fadeToColorBy(leds,NUM_LEDS,CRGB::Black,45);
       LEDS.show();  
     }
 }
@@ -434,7 +434,7 @@ if (randomnum == 5) stopbool = true;
                boid->applyForce(force5);
         boid->update(boids, count);
         boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
-        boid-> brightness = map(boid->velocity.x + boid->velocity.y,0,5,50,255);
+        boid-> brightness = map(boid->velocity.x + boid->velocity.y,0,5,150,255);
 
         drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, boid->brightness, LINEARBLEND_NOWRAP));
         boid->neighbordist = neidist;
@@ -447,7 +447,7 @@ if (randomnum == 5) stopbool = true;
 
     //fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);
 
-    fadeToColorBy(leds,NUM_LEDS,CRGB::Black,40);
+    fadeToColorBy(leds,NUM_LEDS,CRGB::Black,45);
     if (movetocenterrandom == 100)
     {
       movetoCenter();
