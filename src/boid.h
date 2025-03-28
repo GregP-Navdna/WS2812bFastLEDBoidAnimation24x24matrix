@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "vec2.h"
+#include "simd_utils.h"
 
 // Boid class to make the particles interact with each other
 class Boid {

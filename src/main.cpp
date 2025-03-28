@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #include <FastLED.h>
-#include <Math.h>
 #include <vector>
 #include "vec2.h"
 #include "boid.h"
 #include "lookup_tables.h"
+#include "simd_utils.h" // Include the SIMD utilities
 
 float stepcount = 0.1;
 uint8_t fadebyvalue = random(110,120 );
@@ -307,20 +307,10 @@ void incrementG() {
 //fadeAmt > 102 breaks fade but has artistic value(?)
 
 void fadeToColorBy(CRGB* leds, int count, CRGB color, uint8_t fadeAmt) {
-    
-    
-    for (int x = 0; x < count; x++) {
-        // don't know why, looks better when r is brought down 2.5 times faster, brought up half as fast
-        if (leds[x].r < color.r) {
-            leds[x].r = ((leds[x].r << 8) + (((int)(((color.r - leds[x].r) << 7) / rran) * fadeAmt / 255) << 1)) >> 8;
-        }
-        else {
-            leds[x].r = ((leds[x].r << 8) + (((int)(((color.r - leds[x].r) << 7) * rran) * fadeAmt / 255) << 1)) >> 8;
-        }
-        leds[x].g = ((leds[x].g << 8) + ((((color.g - leds[x].g) << 7) * fadeAmt / 255) << 1)) >> 8;
-        leds[x].b = ((leds[x].b << 8) + ((((color.b - leds[x].b) << 7) * fadeAmt / 255) << 1)) >> 8;
-    }
-}  // fadeToColorBy()
+    // Use the SIMD-optimized version of this function
+    simd_fade_to_color(leds, count, color, fadeAmt);
+}
+//attractor class to make the particles gravitate towards a certain point
 
 Attractor attractor5;
 Attractor attractor1;
@@ -460,6 +450,9 @@ if (randomnum == 5) stopbool = true;
 
 void setup()
 {
+  Serial.begin(115200);
+  // Initialize SIMD functionality
+  init_simd();
   delay(3000);
   LEDS.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
   LEDS.setBrightness(BRIGHTNESS);
