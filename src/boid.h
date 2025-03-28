@@ -27,7 +27,7 @@ class Boid {
       acceleration = PVector(0, 0);
       velocity = PVector(randomf(), randomf());
       location = PVector(x, y);
-      maxspeed = 2.2;
+      maxspeed = 1.8;
       maxforce = 0.28;
       brightness = 255;
       mass = random(1.0, 3.0);
