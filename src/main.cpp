@@ -2,9 +2,14 @@
 #include <FastLED.h>
 #include <vector>
 #include "vec2.h"
+#include "spatial_grid.h" // Include spatial grid before boid.h
 #include "boid.h"
 #include "lookup_tables.h"
-#include "simd_utils.h" // Include the SIMD utilities
+#include "simd_utils.h"
+
+// Constants for the spatial grid
+const int GRID_CELLS_X = 10; // Number of grid cells horizontally
+const int GRID_CELLS_Y = 10; // Number of grid cells vertically
 
 float stepcount = 0.1;
 uint8_t fadebyvalue = random(110,120 );
@@ -22,13 +27,13 @@ uint8_t countstep = 5;
 int countdir = 1;
 float maxspeedstep = 0.1;
 int maxspeeddir = 1;
-float maxspeed; // Maximum speed
-float currgravity = 1.90;
-float currmass = 20;
-#define NUM_PARTICLES 60
+float maxspeed = 2.5; // Maximum speed
+float currgravity = 2.90;
+float currmass = 40;
+#define NUM_PARTICLES 255
 uint8_t speed = 1;
-uint8_t count = 50;
-uint8_t boidseperation = 3;
+uint8_t count = 254;
+uint8_t boidseperation = 2;
 uint8_t neighbordistance = 6;
 #define LED_PIN 42     // this is for the esp32-s3
 #define BRIGHTNESS 255 // it's blindingly bright at 255 or looks silly if you don't have enough power injected
@@ -41,7 +46,7 @@ CRGB leds[ROWS * COLS];
 const bool kMatrixSerpentineLayout = true;
 #define NUM_LEDS (ROWS * COLS)
 bool firstPass = true;
-float separa = 2.0;
+float separa = 1.0;
 float alignm = 1.0;
 float cohesi = 1.0;
 const uint8_t VIRTUAL_ROWS = 48;
@@ -57,6 +62,22 @@ int bran = random(1.5F, 4.0F);
 
 typedef vec2<float> PVector;
 typedef vec2<double> vec2d;
+
+// Create a spatial grid for efficient boid neighbor lookup
+SpatialGrid* spatialGrid = nullptr;
+
+// Other variable declarations
+int movetocenterrandom = 0;
+bool stopbool = false;
+
+// Variables for the random slow down effect
+unsigned long lastSlowDownTime = 0;
+unsigned long nextSlowDownInterval = 0;
+bool isSlowingDown = false;
+bool isPaused = false;
+unsigned long pauseStartTime = 0;
+unsigned long pauseDuration = 0;
+
 #pragma region
 ///Pallet definitinos and swapping
 const static TProgmemRGBPalette16 GreenAuroraColors_p FL_PROGMEM = {0x000000, 0x003300, 0x006600, 0x009900, 0x00cc00, 0x00ff00, 0x33ff00, 0x66ff00, 0x99ff00, 0xccff00, 0xffff00, 0xffcc00, 0xff9900, 0xff6600, 0xff3300, 0xff0000};
@@ -339,134 +360,241 @@ int massdir = 1;
 float massstep = 0.5;
 
 PVector center = PVector(36,36);
-bool stopbool = false;
+
 void movetoCenter()
 {
-  int countto = random(5,25);
-    for (int j = 0; j < countto; j++){
-      for (int i = 0; i < count; i++) {
-          Boid *boid = &boids[i];
-          PVector force1 = attractor1.attract(*boid);
-          boid->applyForce(force1);
-          boid->update(boids, count);
-          boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
-          drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, 255, LINEARBLEND_NOWRAP));
-          boid->neighbordist = neidist;
-          boid->desiredseparation = boidsep;
-          if (stopbool == true) 
-          {
-            boid -> velocity = PVector(0,0);
-          }
-      }
-
-      //fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);  
-        fadeToColorBy(leds,NUM_LEDS,CRGB::Black,45);
-      LEDS.show();  
+  int countto = random(5, 25);
+    
+    // Safety check for spatialGrid initialization
+    if (!spatialGrid) {
+        spatialGrid = new SpatialGrid(GRID_CELLS_X, GRID_CELLS_Y, VIRTUAL_ROWS, VIRTUAL_COLS);
+    }
+    
+    // Clear the spatial grid before new movement calculations
+    spatialGrid->clear();
+    
+    // First, insert all boids into the spatial grid
+    for (int i = 0; i < count; i++) {
+        Boid* boid = &boids[i];
+        spatialGrid->insert(boid, boid->location.x, boid->location.y);
+    }
+    
+    for (int j = 0; j < countto; j++) {
+        // Re-clear and populate the grid for each iteration
+        spatialGrid->clear();
+        for (int i = 0; i < count; i++) {
+            Boid* boid = &boids[i];
+            spatialGrid->insert(boid, boid->location.x, boid->location.y);
+        }
+        
+        for (int i = 0; i < count; i++) {
+            Boid* boid = &boids[i];
+            PVector force1 = attractor1.attract(*boid);
+            boid->applyForce(force1);
+            
+            // Use the optimized update method with spatial grid
+            boid->update(*spatialGrid);
+            boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
+            
+            drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, 255, LINEARBLEND));
+            boid->neighbordist = neidist;
+            boid->desiredseparation = boidsep;
+            
+            if (stopbool == true) {
+                boid->velocity = PVector(0, 0);
+            }
+        }
+        
+        fadeToColorBy(leds, NUM_LEDS, CRGB::Black, 45);
+        LEDS.show();
     }
 }
+
 void setNewRandomColorFacd()
 {
   rran = random(1.5F,4.0F);
 gran = random(1.5F, 4.0F);
 bran = random(1.5F, 4.0F);
 }
-
-
-void draw() {
-    if (firstPass) {
-        firstPass = false;
-        start();
-    }
-
-    EVERY_N_MILLISECONDS(100) {
+void randomSlowDownAndSpeed() {
+    static float originalSpeeds[NUM_PARTICLES];
     
-      attractor5.incrementMass();
-      // attractor4.incrementG();
-        // if (virtualViewX < 0 || virtualViewX >= VIRTUAL_COLS - VIEWPORT_COLS)
-        //     viewDirX = -viewDirX;
-        // if (virtualViewY < 0 || virtualViewY >= VIRTUAL_ROWS - VIEWPORT_ROWS)
-        //     viewDirY = -viewDirY;
-        // virtualViewX += viewStep * viewDirX;
-        // virtualViewY += viewStep * viewDirY;
-          if (fadebyvalue < 100 || fadebyvalue > 120)
-            fadebydir = -fadebydir;
-        fadebyvalue += 1 * fadebydir;
+    // Phase 1: Start slowing down - save original speeds
+    if (!isSlowingDown && !isPaused) {
+        isSlowingDown = true;
+        
+        // Store original speeds for each boid
+        for (int i = 0; i < count; i++) {
+            originalSpeeds[i] = boids[i].maxspeed;
+        }
     }
-degreestep += 2;
-if (degreestep > 10 || degreestep < 1) degreestepdir = -degreestepdir;
-
-degree += degreestep * degreedir;
-if (degree > 45 || degree < 1) degreedir = -degreedir;
-
-       attractor5.location.rotateAroundPoint(center.x,center.y, degree);
-
-    EVERY_N_MILLISECONDS(8000) {
-        if (count <= 25 || count >= 60)
-           countdir = -countdir;
-        count += countstep * countdir;        
-        if (maxspeed <= 0.9 || maxspeed >= 2.8)
-           maxspeeddir = -maxspeeddir;
-        maxspeed += maxspeedstep * maxspeeddir; 
+    
+    // Phase 2: Gradually reduce speed
+    if (isSlowingDown) {
+        bool allStopped = true;
+        
+        // Reduce all boid speeds by 0.1
+        for (int i = 0; i < count; i++) {
+            if (boids[i].maxspeed > 0.05) {
+                boids[i].maxspeed -= 0.05;
+                allStopped = false;
+            } else {
+                boids[i].maxspeed = 0;
+            }
+        }
+        
+        // If all boids have stopped, start the pause
+        if (allStopped) {
+            isSlowingDown = false;
+            isPaused = true;
+            pauseStartTime = millis();
+            pauseDuration = random(1000, 6000); // 1-4 seconds in milliseconds
+        }
     }
-     EVERY_N_MILLISECONDS(10000)
-  {
-    palcount = random(0,24);
-    SetNewPalette(palcount);  
-    setNewRandomColorFacd();
-  }
-  int randomnum = random(0,100);
-  int movetocenterrandom = random(0,200);
-if (randomnum == 5) stopbool = true;
+    
+    // Phase 3: After pause, set random speeds
+    if (isPaused && (millis() - pauseStartTime >= pauseDuration)) {
+        isPaused = false;
+        
+        // Set random speeds for each boid between 1.5 and 3.0
+        for (int i = 0; i < count; i++) {
+            boids[i].maxspeed = random(1.5F, 3.5F) ; // Generate 1.5-3.0 range
+        }
+        
+        // Schedule next slow down event
+        lastSlowDownTime = millis();
+        nextSlowDownInterval = random(10000, 40000); // 10-40 seconds in milliseconds
+    }
+}
+void draw() {
+    // Animation timing variables
+    int randomnum = random(0,100);
+    movetocenterrandom = random(0,200);
+    if (randomnum == 5) stopbool = true;
+    
+    if (firstPass) {
+        start();
+        firstPass = false;
+    }
+
+    // Safety check for spatialGrid initialization
+    if (!spatialGrid) {
+        spatialGrid = new SpatialGrid(GRID_CELLS_X, GRID_CELLS_Y, VIRTUAL_ROWS, VIRTUAL_COLS);
+    }
+    
+    // Check if it's time for the random slow down effect
+    if (!isSlowingDown && !isPaused && (millis() - lastSlowDownTime >= nextSlowDownInterval)) {
+        randomSlowDownAndSpeed();
+    }
+    
+    // Continue slow down effect if it's in progress
+    if (isSlowingDown || isPaused) {
+        randomSlowDownAndSpeed();
+    }
+    
+    // Clear the spatial grid at the beginning of each frame
+    spatialGrid->clear();
+    
+    // First, insert all boids into the spatial grid
     for (int i = 0; i < count; i++) {
-        Boid *boid = &boids[i];
-
+        Boid* boid = &boids[i];
+        spatialGrid->insert(boid, boid->location.x, boid->location.y);
+    }
+    
+    // Now update all boids using the spatial grid for neighbor lookup
+    for (int i = 0; i < count; i++) {
+        Boid* boid = &boids[i];
+        
         PVector force5 = attractor5.attract(*boid);
-               boid->applyForce(force5);
-        boid->update(boids, count);
+        boid->applyForce(force5);
+        
+        // Use the optimized update method with spatial grid
+        boid->update(*spatialGrid);
         boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
-        boid-> brightness = map(boid->velocity.x + boid->velocity.y,0,5,150,255);
-
+        boid->brightness = map(boid->velocity.x + boid->velocity.y, 0, 5, 150, 255);
+        
         drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, boid->brightness, LINEARBLEND_NOWRAP));
         boid->neighbordist = neidist;
         boid->desiredseparation = boidsep;
-        if (stopbool == true) 
-        {
-          boid -> velocity = PVector(0,0);
+        
+        if (stopbool == true) {
+            boid->velocity = PVector(0, 0);
         }
     }
-
-    //fadeToBlackBy(leds, NUM_LEDS, fadebyvalue);
-
-    fadeToColorBy(leds,NUM_LEDS,CRGB::Black,45);
-    if (movetocenterrandom == 100)
-    {
-      movetoCenter();
+    
+    // Apply fade effect
+    fadeToColorBy(leds, NUM_LEDS, CRGB::Black, 45);
+    
+    // Occasionally move to center
+    if (movetocenterrandom == 100) {
+        movetoCenter();
+        movetocenterrandom = 0;
     }
-    if (stopbool == true)
-    {     
-      stopbool = false;
+    
+    if (stopbool == true) {
+        stopbool = false;
     }
+    
+    // Update animation parameters
+    EVERY_N_MILLISECONDS(100) {
+        attractor5.incrementMass();
+        
+        if (fadebyvalue < 100 || fadebyvalue > 120)
+            fadebydir = -fadebydir;
+        fadebyvalue += 1 * fadebydir;
+    }
+    
+    degreestep += 2;
+    if (degreestep > 10 || degreestep < 1) degreestepdir = -degreestepdir;
+    
+    degree += degreestep * degreedir;
+    if (degree > 45 || degree < 1) degreedir = -degreedir;
+    
+    attractor5.location.rotateAroundPoint(center.x, center.y, degree);
+    
+    EVERY_N_MILLISECONDS(500) {
+        if (count <= 5 || count >= 254)
+            countdir = -countdir;
+        count += countstep * countdir;
+        
+        if (maxspeed <= 0.3 || maxspeed >= 2.8)
+            maxspeeddir = -maxspeeddir;
+        maxspeed += maxspeedstep * maxspeeddir;
+    }
+    
+    EVERY_N_MILLISECONDS(10000) {
+        palcount = random(0, 24);
+        SetNewPalette(palcount);
+        setNewRandomColorFacd();
+    }
+    
+    // Show updated LEDs
+    LEDS.show();
+    
+    // Increment step count
+    stepcount += 0.1;
 }
 
-void setup()
-{
-  Serial.begin(115200);
-  // Initialize SIMD functionality
-  init_simd();
-  delay(3000);
-  LEDS.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
-  LEDS.setBrightness(BRIGHTNESS);
- 
+void setup() {
+    Serial.begin(115200);
+    // Initialize SIMD functionality
+    init_simd();
+    randomSeed(analogRead(0));
+    
+    // Initialize the spatial grid
+    spatialGrid = new SpatialGrid(GRID_CELLS_X, GRID_CELLS_Y, VIRTUAL_ROWS, VIRTUAL_COLS);
+    
+    // Initialize the slow down timer
+    lastSlowDownTime = millis();
+    nextSlowDownInterval = random(10000, 40000); // 10-40 seconds
+    
+    delay(3000);
+    LEDS.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+    LEDS.setBrightness(BRIGHTNESS);
+    
+    Serial.println("WS2812B Boids with Spatial Partitioning");
 }
 
-void loop()
-{
-  draw();
-  LEDS.show();  
- 
+void loop() {
+    draw();
 }
-
-
-
-///end of pixel mapping functions
-#pragma endregion

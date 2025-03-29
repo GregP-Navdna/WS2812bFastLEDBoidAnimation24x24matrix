@@ -5,35 +5,26 @@
 #include "vec2.h"
 #include "simd_utils.h"
 
+// Forward declaration
+class SpatialGrid;
+
 // Boid class to make the particles interact with each other
 class Boid {
-  public:
+public:
     PVector location;
     PVector velocity;
     PVector acceleration;
-    float maxforce; // Maximum steering force
+    float maxforce;
     float maxspeed;
     uint8_t brightness;
     int hue;
-    float desiredseparation = 3; // this this is the variable that keeps the boids at a certain distance from eachother. the higher the number the more space between. keep this lower than the neighbor distance otherwise the boids will probably not move.
-    float neighbordist = 8;      // this will determine the length that a boid will interact with another boid. the lower the number the more isolated the boid will be. the higher the number the boid will interact with another boid at a further distance.
+    float desiredseparation = 1.0F; // this this is the variable that keeps the boids at a certain distance from eachother. the higher the number the more space between. keep this lower than the neighbor distance otherwise the boids will probably not move.
+    float neighbordist = 2.0F;      // this will determine the length that a boid will interact with another boid. the lower the number the more isolated the boid will be. the higher the number the boid will interact with another boid at a further distance.
     byte colorIndex = 0;
     float mass;
     boolean enabled = true;
-
-    Boid() {}
-
-    Boid(float x, float y) {
-      acceleration = PVector(0, 0);
-      velocity = PVector(randomf(), randomf());
-      location = PVector(x, y);
-      maxspeed = 1.8;
-      maxforce = 0.28;
-      brightness = 255;
-      mass = random(1.0, 3.0);
-      hue = random(10, 255);
-    }
-
+    
+    // Utility functions for random initialization
     static float randomf() {
       return mapfloat(random(0, 255), 0, 255, -.5, .5);
     }
@@ -41,81 +32,44 @@ class Boid {
     static float mapfloat(float x, float in_min, float in_max, float out_min, float out_max) {
       return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
     }
+    
+    Boid() {}
 
-    void run(Boid boids[], uint8_t boidCount) {
-      flock(boids, boidCount);
+    Boid(float x, float y) {
+      acceleration = PVector(0.0F, 0.0F);
+      velocity = PVector(randomf(), randomf());
+      location = PVector(x, y);
+      maxspeed = 1.2;
+      maxforce = 0.28;
+      brightness = 255;
+      mass = random(1.0, 3.0);
+      enabled = true;
+      hue = random(5,150);
     }
     
-    // Method to update location
-    void update(Boid boids[], uint8_t boidCount) {
-      flock(boids, boidCount);
-      velocity += acceleration;
-      velocity.limit(maxspeed);
-      location += velocity;
-      acceleration *= 0;
-    }
-
     void applyForce(PVector force) {
-      // We could add mass here if we want A = F / M
       acceleration += force;
     }
-
-    void repelForce(PVector obstacle, float radius) {
-      // Force that drives boid away from obstacle.
-      PVector futPos = location + velocity; // Calculate future position for more effective behavior.
-      PVector dist = obstacle - futPos;
-      float d = dist.mag();
-
-      if (d <= radius) {
-        PVector repelVec = location - obstacle;
-        repelVec.normalize();
-        if (d != 0) { // Avoid division by zero
-          float scale = 1.0 / d; // Closer means stronger repulsion
-          repelVec *= (scale * maxspeed);
-          repelVec -= velocity;
-          repelVec.limit(maxforce * 2); // Stronger than regular forces
-        }
-        applyForce(repelVec);
-      }
-    }
-
-    void flock(Boid boids[], uint8_t boidCount) {
-      PVector sep = separate(boids, boidCount);
-      PVector ali = align(boids, boidCount);
-      PVector coh = cohesion(boids, boidCount);
-
-      // Arbitrarily weight these forces
-      sep *= 3.5;
-      ali *= 1.0;
-      coh *= 1.0;
-
-      // Add the force vectors to acceleration
-      applyForce(sep);
-      applyForce(ali);
-      applyForce(coh);
-    }
-
-    // Separation
-    // Method checks for nearby boids and steers away
-    PVector separate(Boid boids[], uint8_t boidCount) {
-      PVector steer(0, 0);
+    
+    // New simpler method to get nearest neighbors the traditional way
+    // This is here to maintain compatibility with code that doesn't use spatial grid
+    PVector separate(Boid* boids, int boidsCount) {
+      PVector steer = PVector(0, 0);
       int count = 0;
-
       // For every boid in the system, check if it's too close
-      for (int i = 0; i < boidCount; i++) {
-        if (!boids[i].enabled)
-          continue;
-
-        float d = location.dist(boids[i].location);
-
-        // If the distance is greater than 0 and less than an arbitrary amount (0 when you are yourself)
-        if ((d > 0) && (d < desiredseparation)) {
-          // Calculate vector pointing away from neighbor
-          PVector diff = location - boids[i].location;
-          diff.normalize();
-          diff /= d;        // Weight by distance
-          steer += diff;
-          count++;            // Keep track of how many
+      for (int i = 0; i < boidsCount; i++) {
+        Boid* other = &boids[i];
+        if (other != this && other->enabled) {
+          float d = location.dist(other->location);
+          // If the distance is greater than 0 and less than an arbitrary amount (0 when you are yourself)
+          if ((d > 0) && (d < desiredseparation)) {
+            // Calculate vector pointing away from neighbor
+            PVector diff = location - other->location;
+            diff.normalize();
+            diff /= d;        // Weight by distance
+            steer += diff;
+            count++;            // Keep track of how many
+          }
         }
       }
       // Average -- divide by how many
@@ -124,7 +78,7 @@ class Boid {
       }
 
       // As long as the vector is greater than 0
-      if (steer.magSq() > 0) {
+      if (steer.mag() > 0) {
         // Implement Reynolds: Steering = Desired - Velocity
         steer.normalize();
         steer *= maxspeed;
@@ -133,119 +87,265 @@ class Boid {
       }
       return steer;
     }
+    
+    PVector seek(PVector target) {
+      PVector desired = target - location;  // A vector pointing from the location to the target
+      // Scale to maximum speed
+      desired.normalize();
+      desired *= maxspeed;
 
+      // Steering = Desired minus Velocity
+      PVector steer = desired - velocity;
+      steer.limit(maxforce);  // Limit to maximum steering force
+      return steer;
+    }
+    
     // Alignment
     // For every nearby boid in the system, calculate the average velocity
-    PVector align(Boid boids[], uint8_t boidCount) {
-      PVector sum(0, 0);
+    PVector align(Boid* boids, int boidsCount) {
+      PVector sum = PVector(0, 0);
       int count = 0;
-      for (int i = 0; i < boidCount; i++) {
-        if (!boids[i].enabled)
-          continue;
-
-        float d = location.dist(boids[i].location);
-        if ((d > 0) && (d < neighbordist)) {
-          sum += boids[i].velocity;
-          count++;
+      for (int i = 0; i < boidsCount; i++) {
+        Boid* other = &boids[i];
+        if (other != this && other->enabled) {
+          float d = location.dist(other->location);
+          if ((d > 0) && (d < neighbordist)) {
+            sum += other->velocity;
+            count++;
+          }
         }
       }
       if (count > 0) {
         sum /= (float)count;
+        // First two lines of code below could be condensed with new PVector setMag() method
+        // Not using this method until Processing.js catches up
         sum.normalize();
         sum *= maxspeed;
         PVector steer = sum - velocity;
         steer.limit(maxforce);
         return steer;
-      } else {
+      } 
+      else {
         return PVector(0, 0);
       }
     }
 
     // Cohesion
     // For the average location (i.e. center) of all nearby boids, calculate steering vector towards that location
-    PVector cohesion(Boid boids[], uint8_t boidCount) {
-      PVector sum(0, 0);   // Start with empty vector to accumulate all locations
+    PVector cohesion(Boid* boids, int boidsCount) {
+      PVector sum = PVector(0, 0);   // Start with empty vector to accumulate all locations
       int count = 0;
-      for (int i = 0; i < boidCount; i++) {
-        if (!boids[i].enabled)
-          continue;
-
-        float d = location.dist(boids[i].location);
-        if ((d > 0) && (d < neighbordist)) {
-          sum += boids[i].location; // Add location
-          count++;
+      for (int i = 0; i < boidsCount; i++) {
+        Boid* other = &boids[i];
+        if (other != this && other->enabled) {
+          float d = location.dist(other->location);
+          if ((d > 0) && (d < neighbordist)) {
+            sum += other->location; // Add location
+            count++;
+          }
         }
       }
       if (count > 0) {
         sum /= count;
         return seek(sum);  // Steer towards the location
-      } else {
+      } 
+      else {
         return PVector(0, 0);
       }
     }
 
-    // A method that calculates and applies a steering force towards a target
-    // STEER = DESIRED MINUS VELOCITY
-    PVector seek(PVector target) {
-      PVector desired = target - location;  // A vector pointing from the location to the target
-
-      // Normalize desired and scale to maximum speed
-      if (desired.magSq() > 0) {
-        desired.normalize();
-        desired *= maxspeed;
-        
-        // Steering = Desired minus Velocity
-        PVector steer = desired - velocity;
-        steer.limit(maxforce);  // Limit to maximum steering force
-        return steer;
-      } else {
-        return PVector(0, 0);
-      }
+    // Keep the original update method for compatibility
+    void update(Boid* boids, int boidsCount) {
+      PVector sep = separate(boids, boidsCount);
+      PVector ali = align(boids, boidsCount);
+      PVector coh = cohesion(boids, boidsCount);
+      
+      // Arbitrarily weight these forces
+      sep *= 3.5;
+      ali *= 1.0;
+      coh *= 1.0;
+      
+      // Add the force vectors to acceleration
+      applyForce(sep);
+      applyForce(ali);
+      applyForce(coh);
+      
+      // Update velocity
+      velocity += acceleration;
+      // Limit speed
+      velocity.limit(maxspeed);
+      location += velocity;
+      // Reset acceleration to 0 each cycle
+      acceleration *= 0;
+      
+      // Update hue value for color variation
+      hue = (hue + random8(1, 10)) % 255;
     }
 
-    // Wraparound
-    void borders(uint8_t virtualWidth, uint8_t virtualHeight) {
-      if (location.x < 0) location.x = virtualWidth;
-      if (location.y < 0) location.y = virtualHeight;
-      if (location.x > virtualWidth) location.x = 0;
-      if (location.y > virtualHeight) location.y = 0;
+    // Method to wrap boid position around borders
+    void wrapAroundBorders(float width, float height) {
+      if (location.x < 0) location.x = width - 1;
+      if (location.y < 0) location.y = height - 1;
+      if (location.x >= width) location.x = 0;
+      if (location.y >= height) location.y = 0;
     }
     
-    // Add wrapAroundBorders method that was in the original code
-    void wrapAroundBorders(uint8_t VIRTUAL_ROWS, uint8_t VIRTUAL_COLS) {
-      if (location.x < 0) location.x += VIRTUAL_ROWS;
-      if (location.y < 0) location.y += VIRTUAL_COLS;
-      if (location.x >= VIRTUAL_ROWS) location.x -= VIRTUAL_ROWS;
-      if (location.y >= VIRTUAL_COLS) location.y -= VIRTUAL_COLS;
-    }
-    
-    // Add avoidBorders method that was in the original code
-    void avoidBorders(uint8_t ROWS, uint8_t COLS) {
+    // Method to avoid borders by turning away
+    void avoidBorders(float width, float height, float margin) {
       PVector desired = velocity;
 
-      if (location.x < 8)
+      if (location.x < margin) {
         desired = PVector(maxspeed, velocity.y);
-      if (location.x >= ROWS - 8)
+      } 
+      else if (location.x > width - margin) {
         desired = PVector(-maxspeed, velocity.y);
-      if (location.y < 8)
+      }
+
+      if (location.y < margin) {
         desired = PVector(velocity.x, maxspeed);
-      if (location.y >= COLS - 8)
+      } 
+      else if (location.y > height - margin) {
         desired = PVector(velocity.x, -maxspeed);
+      }
 
       if (desired != velocity) {
         PVector steer = desired - velocity;
         steer.limit(maxforce);
         applyForce(steer);
       }
-
+    }
+    
+    // Keep position within borders
+    void constrainToBorders(float width, float height) {
       if (location.x < 0)
         location.x = 0;
       if (location.y < 0)
         location.y = 0;
-      if (location.x >= ROWS)
-        location.x = ROWS - 1;
-      if (location.y >= COLS)
-        location.y = COLS - 1;
+      if (location.x >= width)
+        location.x = width - 1;
+      if (location.y >= height)
+        location.y = height - 1;
+    }
+
+    // Optimized version of separate that uses spatial partitioning
+    PVector separate(std::vector<void*>& neighbors) {
+        PVector steer = PVector(0.0F, 0.0F);
+        int count = 0;
+        
+        // For every boid in the system, check if it's too close
+        for (void* obj : neighbors) {
+            Boid* other = static_cast<Boid*>(obj);
+            if (other != this && other->enabled) {
+                float d = location.dist(other->location);
+                // If the distance is greater than 0 and less than an arbitrary amount (0 when you are yourself)
+                if ((d > 0) && (d < desiredseparation)) {
+                    // Calculate vector pointing away from neighbor
+                    PVector diff = location - other->location;
+                    diff.normalize();
+                    diff /= d;        // Weight by distance
+                    steer += diff;
+                    count++;            // Keep track of how many
+                }
+            }
+        }
+        // Average -- divide by how many
+        if (count > 0) {
+            steer /= (float)count;
+        }
+
+        // As long as the vector is greater than 0
+        if (steer.mag() > 0) {
+            // Implement Reynolds: Steering = Desired - Velocity
+            steer.normalize();
+            steer *= maxspeed;
+            steer -= velocity;
+            steer.limit(maxforce);
+        }
+        return steer;
+    }
+
+    // Optimized version of align that uses spatial partitioning
+    PVector align(std::vector<void*>& neighbors) {
+        PVector sum = PVector(0.0F, 0.0F);
+        int count = 0;
+        
+        for (void* obj : neighbors) {
+            Boid* other = static_cast<Boid*>(obj);
+            if (other != this && other->enabled) {
+                float d = location.dist(other->location);
+                if ((d > 0) && (d < neighbordist)) {
+                    sum += other->velocity;
+                    count++;
+                }
+            }
+        }
+        
+        if (count > 0) {
+            sum /= (float)count;
+            sum.normalize();
+            sum *= maxspeed;
+            PVector steer = sum - velocity;
+            steer.limit(maxforce);
+            return steer;
+        } else {
+            return PVector(0.0F, 0.0F);
+        }
+    }
+
+    // Optimized version of cohesion that uses spatial partitioning
+    PVector cohesion(std::vector<void*>& neighbors) {
+        PVector sum = PVector(0.0F, 0.0F);
+        int count = 0;
+        
+        for (void* obj : neighbors) {
+            Boid* other = static_cast<Boid*>(obj);
+            if (other != this && other->enabled) {
+                float d = location.dist(other->location);
+                if ((d > 0) && (d < neighbordist)) {
+                    sum += other->location; // Add location
+                    count++;
+                }
+            }
+        }
+        
+        if (count > 0) {
+            sum /= (float)count;
+            return seek(sum);  // Steer towards the position
+        } else {
+            return PVector(0.0F, 0.0F);
+        }
+    }
+    
+    // Update with spatial grid optimization
+    void update(SpatialGrid& grid) {
+        // Get only neighboring boids from the spatial grid
+        std::vector<void*> neighbors = grid.getNeighbors(location.x, location.y, neighbordist);
+        
+        // Calculate steering forces
+        PVector sep = separate(neighbors);
+        PVector ali = align(neighbors);
+        PVector coh = cohesion(neighbors);
+        
+        // Arbitrarily weight these forces
+        sep *= 3.5;
+        ali *= 1.0;
+        coh *= 1.0;
+        
+        // Add the force vectors to acceleration
+        applyForce(sep);
+        applyForce(ali);
+        applyForce(coh);
+        
+        // Update velocity
+        velocity += acceleration;
+        // Limit speed
+        velocity.limit(maxspeed);
+        location += velocity;
+        // Reset acceleration to 0 each cycle
+        acceleration *= 0;
+        
+        // Update hue value for color variation
+        hue = (hue + random8(1, 10)) % 255;
     }
 };
 
