@@ -6,13 +6,14 @@
 #include "boid.h"
 #include "lookup_tables.h"
 #include "simd_utils.h"
+#include "matrix_effects.h"
 
 // Constants for the spatial grid
-const int GRID_CELLS_X = 10; // Number of grid cells horizontally
-const int GRID_CELLS_Y = 10; // Number of grid cells vertically
+const int GRID_CELLS_X = 8; // Number of grid cells horizontally
+const int GRID_CELLS_Y = 8; // Number of grid cells vertically
 
 float stepcount = 0.1;
-uint8_t fadebyvalue = random(110,120 );
+uint8_t fadebyvalue = random(10,120 );
 uint8_t neidist = random(3,5);
 uint8_t boidsep = random(3,5);
 int neidistdir = 1;
@@ -66,6 +67,9 @@ typedef vec2<double> vec2d;
 // Create a spatial grid for efficient boid neighbor lookup
 SpatialGrid* spatialGrid = nullptr;
 
+// Create a matrix effects handler
+MatrixEffects* matrixEffects = nullptr;
+
 // Other variable declarations
 int movetocenterrandom = 0;
 bool stopbool = false;
@@ -77,6 +81,15 @@ bool isSlowingDown = false;
 bool isPaused = false;
 unsigned long pauseStartTime = 0;
 unsigned long pauseDuration = 0;
+
+// Variables for attractor/repulsor management
+unsigned long lastAttractorChangeTime = 0;
+unsigned long attractorChangeDuration = 15000; // Change attractor behavior every 15 seconds
+bool useRepulsors = false;
+
+// Variables for additional ripple effects
+unsigned long lastRippleTime = 0;
+unsigned long rippleInterval = 0; // Random interval
 
 #pragma region
 ///Pallet definitinos and swapping
@@ -277,53 +290,113 @@ class Attractor {
     uint8_t massdelaywait = random(5,20);
     uint8_t delaytimer = 0;
     uint8_t massdelay = random (20,800);
-  float G; // Gravitational Constant
-  PVector location; // Location
-  
-  Attractor() {
-    location = PVector((virtualViewX +12/ 2), (virtualViewY +12/ 2));
-    mass = currmass;
-    G = currgravity;
-  } 
-  void setlocation(float x, float y) {
-    location = PVector(x,y);//virtualViewX+24/ 2), (virtualViewY +24/ 2));
-  }
-  void setMass(float m) {
-    mass = m;
-  }
-  void setG(float g) {
-    G = g;
-  }
-void incrementMass() {
-  if (delaytimer > massdelaywait) {
-    mass += (mass / 8 );// + random(1,2)* massdir;
-    G += 0.5 * gdir;
-    if (G > 4 || G < 0.50) gdir = -gdir;//G = mass;
-  } 
-  if (mass > massdelay) 
-  {
-    delaytimer = 0;
-    mass = 1;
-    massdelaywait = random(2,50);
-    massdelay = random(300,400);
-  }
-  if (mass == 1) delaytimer += 1;
-}
-void incrementG() {
-  if (G > 15) G = 0;
-  G *= GStep * gdir;
-}
-  PVector attract(Boid m) {
+    float G; // Gravitational Constant
+    PVector location; // Location
+    bool isRepulsor = false; // If true, this will repel instead of attract
+    float maxInfluenceRadius = 100.0; // Maximum distance this attractor influences
+    float minDistance = 15.0; // Minimum distance to prevent extreme forces
+    CRGB color = CRGB::Blue; // Visual color for debugging
+    bool showVisually = false; // Whether to show this attractor visually
     
-    PVector force = location - m.location; // Calculate direction of force
-    float d = force.mag(); // Distance between objects
-    d = constrain(d, 15.0, 100.0); // Limiting the distance to eliminate "extreme" results for very close or very far objects
-    force.normalize(); // Normalize vector (distance doesn't matter here, we just want this vector for direction)        
-    float strength = (G * mass * m.mass) / (d * d); // Calculate gravitional force magnitude
-    force *= strength; // Get force vector --> magnitude * direction
-    return force;
-  }
-};
+    Attractor() {
+      location = PVector((virtualViewX + 12 / 2), (virtualViewY + 12 / 2));
+      mass = currmass;
+      G = currgravity;
+    } 
+    
+    void setlocation(float x, float y) {
+      location = PVector(x, y);
+    }
+    
+    void setMass(float m) {
+      mass = m;
+    }
+    
+    void setG(float g) {
+      G = g;
+    }
+    
+    void setRepulsor(bool repel) {
+      isRepulsor = repel;
+      // Repulsors typically look red
+      if (repel) {
+        color = CRGB::Red;
+      } else {
+        color = CRGB::Blue;
+      }
+    }
+    
+    void setRadius(float minDist, float maxDist) {
+      minDistance = minDist;
+      maxInfluenceRadius = maxDist;
+    }
+    
+    void incrementMass() {
+      if (delaytimer > massdelaywait) {
+        mass += (mass / 8); // + random(1,2)* massdir;
+        G += 0.5 * gdir;
+        if (G > 4 || G < 0.50) gdir = -gdir; //G = mass;
+      } 
+      if (mass > massdelay) {
+        delaytimer = 0;
+        mass = 1;
+        massdelaywait = random(2, 50);
+        massdelay = random(300, 400);
+      }
+      if (mass == 1) delaytimer += 1;
+    }
+    
+    void incrementG() {
+      if (G > 15) G = 0;
+      G *= GStep * gdir;
+    }
+    
+    // Orbit around a point
+    void orbit(float centerX, float centerY, float radius, float speed, float phase) {
+      float angle = (millis() / 1000.0) * speed + phase;
+      float x = centerX + radius * cos(angle);
+      float y = centerY + radius * sin(angle);
+      location = PVector(x, y);
+    }
+    
+    // Draw the attractor/repulsor for debugging
+    void draw() {
+      if (!showVisually) return;
+      
+      // Calculate the radius size based on mass
+      float radius = constrain(mass / 10.0, 1.0, 3.0);
+      
+      // Set color brightness based on G value
+      CRGB drawColor = color;
+      drawColor.nscale8(map(G, 0, 10, 50, 255));
+      
+      // Draw the attractor/repulsor
+      for (float r = 0; r < radius; r += 0.5) {
+        drawPixelXYF(location.x, location.y, drawColor);
+      }
+    }
+    
+    PVector attract(Boid m) {
+      PVector force = location - m.location; // Calculate direction of force
+      float d = force.mag(); // Distance between objects
+      
+      // If outside influence radius, return zero force
+      if (d > maxInfluenceRadius) return PVector(0, 0);
+      
+      d = constrain(d, minDistance, maxInfluenceRadius); // Limiting the distance to eliminate "extreme" results
+      force.normalize(); // Normalize vector (distance doesn't matter here, we just want this vector for direction)
+      
+      float strength = (G * mass * m.mass) / (d * d); // Calculate gravitational force magnitude
+      
+      // If this is a repulsor, reverse the direction
+      if (isRepulsor) {
+        force = force * -1;
+      }
+      
+      force *= strength; // Get force vector --> magnitude * direction
+      return force;
+    }
+  };
 //Fades CRGB array towards the background color by amount.  
 //fadeAmt > 102 breaks fade but has artistic value(?)
 
@@ -333,8 +406,24 @@ void fadeToColorBy(CRGB* leds, int count, CRGB color, uint8_t fadeAmt) {
 }
 //attractor class to make the particles gravitate towards a certain point
 
-Attractor attractor5;
-Attractor attractor1;
+Attractor attractor5;   // Main central attractor
+Attractor attractor1;   // Secondary attractor for moveToCenter
+
+// New attractors and repulsors
+Attractor attractorTopLeft;     // Attractor in top-left corner
+Attractor attractorTopRight;    // Attractor in top-right corner
+Attractor attractorBottomLeft;  // Attractor in bottom-left corner
+Attractor attractorBottomRight; // Attractor in bottom-right corner
+Attractor repulsorCenter;       // Repulsor in center (pushes boids away)
+
+// Array of attractors for easier management
+const int MAX_ATTRACTORS = 7;
+Attractor* attractorArray[MAX_ATTRACTORS];
+bool attractorActive[MAX_ATTRACTORS] = {true, false, false, false, false, false, false};
+
+// Current attractor pattern index
+int currentAttractorPattern = 0;
+const int NUM_ATTRACTOR_PATTERNS = 6;
 
 Boid boids[NUM_PARTICLES];
 int degreestep = 1;
@@ -342,19 +431,198 @@ double degree;
 int degreedir = 1;
 int degreestepdir = 1;
 //main functions 
+// Initialize attractor patterns
+void initAttractorPatterns() {
+  // Store all attractors in the array for easier management
+  attractorArray[0] = &attractor5;         // Main central attractor
+  attractorArray[1] = &attractor1;         // Secondary central attractor
+  attractorArray[2] = &attractorTopLeft;
+  attractorArray[3] = &attractorTopRight;
+  attractorArray[4] = &attractorBottomLeft;
+  attractorArray[5] = &attractorBottomRight;
+  attractorArray[6] = &repulsorCenter;
+  
+  // Initialize corner attractors
+  attractorTopLeft.setlocation(virtualViewX + 8, virtualViewY + 8);
+  attractorTopLeft.setMass(20);
+  attractorTopLeft.setG(1.5);
+  attractorTopLeft.setRadius(10.0, 80.0);
+  attractorTopLeft.color = CRGB::Green;
+  
+  attractorTopRight.setlocation(virtualViewX + VIRTUAL_COLS - 8, virtualViewY + 8);
+  attractorTopRight.setMass(20);
+  attractorTopRight.setG(1.5);
+  attractorTopRight.setRadius(10.0, 80.0);
+  attractorTopRight.color = CRGB::Yellow;
+  
+  attractorBottomLeft.setlocation(virtualViewX + 8, virtualViewY + VIRTUAL_ROWS - 8);
+  attractorBottomLeft.setMass(20);
+  attractorBottomLeft.setG(1.5);
+  attractorBottomLeft.setRadius(10.0, 80.0);
+  attractorBottomLeft.color = CRGB::Purple;
+  
+  attractorBottomRight.setlocation(virtualViewX + VIRTUAL_COLS - 8, virtualViewY + VIRTUAL_ROWS - 8);
+  attractorBottomRight.setMass(20);
+  attractorBottomRight.setG(1.5);
+  attractorBottomRight.setRadius(10.0, 80.0);
+  attractorBottomRight.color = CRGB::Aqua;
+  
+  // Initialize repulsor
+  repulsorCenter.setlocation(virtualViewX + VIRTUAL_COLS/2, virtualViewY + VIRTUAL_ROWS/2);
+  repulsorCenter.setMass(50);
+  repulsorCenter.setG(3.0);
+  repulsorCenter.setRepulsor(true);
+  repulsorCenter.setRadius(5.0, 120.0);
+}
+
+// Switch to a new attractor pattern
+void setAttractorPattern(int patternIndex) {
+  // Reset all attractors to inactive
+  for (int i = 0; i < MAX_ATTRACTORS; i++) {
+    attractorActive[i] = false;
+  }
+  
+  // Always keep the main attractor active
+  attractorActive[0] = true;
+  
+  // Set specific patterns
+  switch (patternIndex) {
+    case 0: // Default - just the main attractor
+      // Nothing to add, main attractor is already active
+      break;
+      
+    case 1: // Corners - activate all four corner attractors
+      attractorActive[2] = true; // Top Left
+      attractorActive[3] = true; // Top Right
+      attractorActive[4] = true; // Bottom Left
+      attractorActive[5] = true; // Bottom Right
+      break;
+      
+    case 2: // Central repulsor with corner attractors
+      attractorActive[2] = true; // Top Left
+      attractorActive[3] = true; // Top Right
+      attractorActive[4] = true; // Bottom Left
+      attractorActive[5] = true; // Bottom Right
+      attractorActive[6] = true; // Central repulsor
+      break;
+      
+    case 3: // Diagonal attractors
+      attractorActive[2] = true; // Top Left
+      attractorActive[5] = true; // Bottom Right
+      break;
+      
+    case 4: // Other diagonal attractors
+      attractorActive[3] = true; // Top Right
+      attractorActive[4] = true; // Bottom Left
+      break;
+      
+    case 5: // Central repulsor only
+      attractorActive[6] = true; // Central repulsor
+      break;
+  }
+  
+  currentAttractorPattern = patternIndex;
+}
+
+// Update attractor positions for dynamic movement
+void updateAttractors() {
+  // Main attractor orbits the center
+  float centerX = virtualViewX + VIRTUAL_COLS / 2;
+  float centerY = virtualViewY + VIRTUAL_ROWS / 2;
+  
+  // Update main attractor (typically always active)
+  if (attractorActive[0]) {
+    attractorArray[0]->orbit(centerX, centerY, 10, 0.2, 0);
+    attractorArray[0]->incrementMass();
+  }
+  
+  // Apply orbital motion to corner attractors if active
+  if (attractorActive[2]) { // Top Left
+    float tlx = virtualViewX + VIRTUAL_COLS * 0.25;
+    float tly = virtualViewY + VIRTUAL_ROWS * 0.25;
+    attractorArray[2]->orbit(tlx, tly, 5, 0.5, 0);
+  }
+  
+  if (attractorActive[3]) { // Top Right
+    float trx = virtualViewX + VIRTUAL_COLS * 0.75;
+    float try_ = virtualViewY + VIRTUAL_ROWS * 0.25;
+    attractorArray[3]->orbit(trx, try_, 5, 0.5, PI/2);
+  }
+  
+  if (attractorActive[4]) { // Bottom Left
+    float blx = virtualViewX + VIRTUAL_COLS * 0.25;
+    float bly = virtualViewY + VIRTUAL_ROWS * 0.75;
+    attractorArray[4]->orbit(blx, bly, 5, 0.5, PI);
+  }
+  
+  if (attractorActive[5]) { // Bottom Right
+    float brx = virtualViewX + VIRTUAL_COLS * 0.75;
+    float bry = virtualViewY + VIRTUAL_ROWS * 0.75;
+    attractorArray[5]->orbit(brx, bry, 5, 0.5, PI*1.5);
+  }
+  
+  // Pulse the repulsor strength if active
+  if (attractorActive[6]) {
+    float pulseFactor = (sin(millis() / 1000.0) + 1) / 2.0; // 0 to 1
+    attractorArray[6]->setG(1.0 + pulseFactor * 3.0); // 1.0 to 4.0
+  }
+  
+  // Check if it's time to change attractor pattern
+  if (millis() - lastAttractorChangeTime > attractorChangeDuration) {
+    // Change to a new random pattern
+    int newPattern = random(0, NUM_ATTRACTOR_PATTERNS);
+    while (newPattern == currentAttractorPattern) {
+      newPattern = random(0, NUM_ATTRACTOR_PATTERNS);
+    }
+    setAttractorPattern(newPattern);
+    
+    // Trigger special effects when changing patterns
+    if (matrixEffects) {
+      matrixEffects->startRipple();
+      //delay(120);
+      matrixEffects->startRipple(); // Second ripple
+      if (random8() < 180) { // 70% chance (was 50%)
+        matrixEffects->startScreenShake(5, 1);
+      }
+    }
+    
+    // Reset the timer
+    lastAttractorChangeTime = millis();
+    // Set a random duration for this pattern (10-30 seconds)
+    attractorChangeDuration = random(10000, 30000);
+  }
+  
+  // Draw active attractors (for debugging)
+  for (int i = 0; i < MAX_ATTRACTORS; i++) {
+    if (attractorActive[i]) {
+      attractorArray[i]->draw();
+    }
+  }
+}
+
 void start()
 {
   for (int i = 0; i < count; i++)
   {
     boids[i] = Boid(random(COLS), 0);
   }
-   currentPalette_p = &GreenAuroraColors_p;
+  currentPalette_p = &GreenAuroraColors_p;
+  
+  // Initialize the main attractors
   attractor1.setlocation((virtualViewX+24/ 2), (virtualViewY+24/ 2));
   attractor1.setMass(100);
   attractor1.setG(4);
-   attractor5.setlocation((virtualViewX+36/ 2), (virtualViewY+36/ 2));
+  
+  attractor5.setlocation((virtualViewX+36/ 2), (virtualViewY+36/ 2));
   attractor5.setMass(1);
   attractor5.setG(0.1);
+  
+  // Initialize all attractors
+  initAttractorPatterns();
+  
+  // Start with the default pattern
+  setAttractorPattern(0);
+  lastAttractorChangeTime = millis();
 }
 int massdir = 1;
 float massstep = 0.5;
@@ -368,6 +636,11 @@ void movetoCenter()
     // Safety check for spatialGrid initialization
     if (!spatialGrid) {
         spatialGrid = new SpatialGrid(GRID_CELLS_X, GRID_CELLS_Y, VIRTUAL_ROWS, VIRTUAL_COLS);
+    }
+    
+    // Trigger a color wash effect when moving to center
+    if (matrixEffects) {
+        matrixEffects->startColorWash(1, 8, 25); // Vertical wash
     }
     
     // Clear the spatial grid before new movement calculations
@@ -396,7 +669,7 @@ void movetoCenter()
             boid->update(*spatialGrid);
             boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
             
-            drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, 255, LINEARBLEND));
+            drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, 255, NOBLEND));
             boid->neighbordist = neidist;
             boid->desiredseparation = boidsep;
             
@@ -405,8 +678,21 @@ void movetoCenter()
             }
         }
         
+        // Apply matrix effects during center movement
+        if (matrixEffects) {
+            matrixEffects->update(leds);
+        }
+        
         fadeToColorBy(leds, NUM_LEDS, CRGB::Black, 45);
         LEDS.show();
+    }
+    
+    // After finishing center movement, stop color wash and add multiple ripples
+    if (matrixEffects) {
+        matrixEffects->stopColorWash();
+        matrixEffects->startRipple();
+        //delay(100); // Small delay between ripples
+        matrixEffects->startRipple(); // Second ripple
     }
 }
 
@@ -427,6 +713,11 @@ void randomSlowDownAndSpeed() {
         for (int i = 0; i < count; i++) {
             originalSpeeds[i] = boids[i].maxspeed;
         }
+        
+        // Trigger a screen shake effect when starting to slow down
+        if (matrixEffects) {
+            matrixEffects->startScreenShake(8, 1); // Subtle screen shake
+        }
     }
     
     // Phase 2: Gradually reduce speed
@@ -435,8 +726,8 @@ void randomSlowDownAndSpeed() {
         
         // Reduce all boid speeds by 0.1
         for (int i = 0; i < count; i++) {
-            if (boids[i].maxspeed > 0.05) {
-                boids[i].maxspeed -= 0.05;
+            if (boids[i].maxspeed > 0.2) {
+                boids[i].maxspeed -= 0.1;
                 allStopped = false;
             } else {
                 boids[i].maxspeed = 0;
@@ -448,7 +739,12 @@ void randomSlowDownAndSpeed() {
             isSlowingDown = false;
             isPaused = true;
             pauseStartTime = millis();
-            pauseDuration = random(1000, 6000); // 1-4 seconds in milliseconds
+            pauseDuration = random(3000, 15000); // 3-15 seconds in milliseconds
+            
+            // Start starfield effect during pause
+            if (matrixEffects) {
+                matrixEffects->startStarfield();
+            }
         }
     }
     
@@ -456,14 +752,22 @@ void randomSlowDownAndSpeed() {
     if (isPaused && (millis() - pauseStartTime >= pauseDuration)) {
         isPaused = false;
         
-        // Set random speeds for each boid between 1.5 and 3.0
+        // Set random speeds for each boid between 1.1 and 2.0
         for (int i = 0; i < count; i++) {
-            boids[i].maxspeed = random(1.5F, 3.5F) ; // Generate 1.5-3.0 range
+            boids[i].maxspeed = random(1.1F, 2.0F);
         }
         
         // Schedule next slow down event
         lastSlowDownTime = millis();
         nextSlowDownInterval = random(10000, 40000); // 10-40 seconds in milliseconds
+        
+        // End starfield effect and trigger multiple ripples
+        if (matrixEffects) {
+            matrixEffects->stopStarfield();
+            matrixEffects->startRipple();
+            //delay(150); // Small delay between ripples
+            matrixEffects->startRipple(); // Second ripple
+        }
     }
 }
 void draw() {
@@ -492,6 +796,27 @@ void draw() {
         randomSlowDownAndSpeed();
     }
     
+    // Occasionally trigger a random matrix effect
+    EVERY_N_SECONDS(15) { // Increased frequency (was 30)
+        if (matrixEffects && random8() < 180) { // 70% chance (was 50%)
+            matrixEffects->triggerRandomEffect();
+        }
+    }
+    
+    // Dedicated timer for random ripples
+    if (matrixEffects && (millis() - lastRippleTime > rippleInterval)) {
+        matrixEffects->startRipple();
+        lastRippleTime = millis();
+        rippleInterval = random(100, 1000); // 3-8 seconds between random ripples
+    }
+    
+    // Get screen shake offsets if active
+    int8_t shakeOffsetX = 0;
+    int8_t shakeOffsetY = 0;
+    if (matrixEffects) {
+        matrixEffects->getShakeOffsets(shakeOffsetX, shakeOffsetY);
+    }
+    
     // Clear the spatial grid at the beginning of each frame
     spatialGrid->clear();
     
@@ -501,25 +826,15 @@ void draw() {
         spatialGrid->insert(boid, boid->location.x, boid->location.y);
     }
     
+    // Update all attractor positions and behaviors
+    updateAttractors();
+    
     // Now update all boids using the spatial grid for neighbor lookup
-    for (int i = 0; i < count; i++) {
-        Boid* boid = &boids[i];
-        
-        PVector force5 = attractor5.attract(*boid);
-        boid->applyForce(force5);
-        
-        // Use the optimized update method with spatial grid
-        boid->update(*spatialGrid);
-        boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
-        boid->brightness = map(boid->velocity.x + boid->velocity.y, 0, 5, 150, 255);
-        
-        drawPixelXYF(boid->location.x, boid->location.y, ColorFromPalette(*currentPalette_p, boid->hue * 15, boid->brightness, LINEARBLEND_NOWRAP));
-        boid->neighbordist = neidist;
-        boid->desiredseparation = boidsep;
-        
-        if (stopbool == true) {
-            boid->velocity = PVector(0, 0);
-        }
+
+    
+    // Apply matrix effects before the fade
+    if (matrixEffects) {
+        matrixEffects->update(leds);
     }
     
     // Apply fade effect
@@ -536,15 +851,15 @@ void draw() {
     }
     
     // Update animation parameters
-    EVERY_N_MILLISECONDS(100) {
+    EVERY_N_MILLISECONDS(10) {
         attractor5.incrementMass();
         
-        if (fadebyvalue < 100 || fadebyvalue > 120)
+        if (fadebyvalue < 10 || fadebyvalue > 120)
             fadebydir = -fadebydir;
         fadebyvalue += 1 * fadebydir;
     }
     
-    degreestep += 2;
+    degreestep += 3;
     if (degreestep > 10 || degreestep < 1) degreestepdir = -degreestepdir;
     
     degree += degreestep * degreedir;
@@ -553,11 +868,11 @@ void draw() {
     attractor5.location.rotateAroundPoint(center.x, center.y, degree);
     
     EVERY_N_MILLISECONDS(500) {
-        if (count <= 5 || count >= 254)
+        if (count <= 2 || count >= 254)
             countdir = -countdir;
         count += countstep * countdir;
         
-        if (maxspeed <= 0.3 || maxspeed >= 2.8)
+        if (maxspeed <= 0.4 || maxspeed >= 2.5)
             maxspeeddir = -maxspeeddir;
         maxspeed += maxspeedstep * maxspeeddir;
     }
@@ -566,8 +881,43 @@ void draw() {
         palcount = random(0, 24);
         SetNewPalette(palcount);
         setNewRandomColorFacd();
+        
+        // Always trigger ripple effects when changing palette
+        if (matrixEffects) {
+            matrixEffects->startRipple();
+            //delay(150);
+            matrixEffects->startRipple();
+        }
     }
-    
+    for (int i = 0; i < count; i++) {
+      Boid* boid = &boids[i];
+      
+      // Apply forces from all active attractors
+      for (int j = 0; j < MAX_ATTRACTORS; j++) {
+          if (attractorActive[j]) {
+              PVector force = attractorArray[j]->attract(*boid);
+              boid->applyForce(force);
+          }
+      }
+      
+      // Use the optimized update method with spatial grid
+      
+      boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
+      boid->brightness = map(boid->velocity.x + boid->velocity.y, 0.1, 4.5, 25, 255);
+      boid->mass = (255-count)/6;
+      boid->update(*spatialGrid);
+      // Apply screen shake offset when drawing
+      float drawX = boid->location.x + shakeOffsetX;
+      float drawY = boid->location.y + shakeOffsetY;
+      drawPixelXYF(drawX, drawY, ColorFromPalette(*currentPalette_p, boid->hue * 15, boid->brightness, NOBLEND));
+      
+      boid->neighbordist = neidist;
+      boid->desiredseparation = boidsep;
+      
+      if (stopbool == true) {
+          boid->velocity = PVector(0, 0);
+      }
+  }
     // Show updated LEDs
     LEDS.show();
     
@@ -584,15 +934,26 @@ void setup() {
     // Initialize the spatial grid
     spatialGrid = new SpatialGrid(GRID_CELLS_X, GRID_CELLS_Y, VIRTUAL_ROWS, VIRTUAL_COLS);
     
+    // Initialize the matrix effects
+    matrixEffects = new MatrixEffects(ROWS, COLS, XY);
+    
     // Initialize the slow down timer
     lastSlowDownTime = millis();
     nextSlowDownInterval = random(10000, 40000); // 10-40 seconds
+    
+    // Initialize attractor change timing
+    lastAttractorChangeTime = millis();
+    attractorChangeDuration = random(10000, 20000); // 10-20 seconds initial duration
+    
+    // Initialize ripple timer
+    lastRippleTime = millis();
+    rippleInterval = random(3000, 8000); // 3-8 seconds between random ripples
     
     delay(3000);
     LEDS.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
     LEDS.setBrightness(BRIGHTNESS);
     
-    Serial.println("WS2812B Boids with Spatial Partitioning");
+    Serial.println("WS2812B Boids with Spatial Partitioning, Matrix Effects, and Dynamic Attractors");
 }
 
 void loop() {

@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "vec2.h"
 #include "simd_utils.h"
+#include "algorithm"
 
 // Forward declaration
 class SpatialGrid;

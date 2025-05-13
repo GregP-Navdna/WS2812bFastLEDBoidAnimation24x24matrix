@@ -18,7 +18,7 @@ private:
     int maxObjectsPerCell;
 
 public:
-    SpatialGrid(int width, int height, float worldWidth, float worldHeight, int maxObjects = 8) {
+    SpatialGrid(int width, int height, float worldWidth, float worldHeight, int maxObjects = 6) {
         this->gridWidth = width;
         this->gridHeight = height;
         this->cellWidth = worldWidth / width;
