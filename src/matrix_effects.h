@@ -105,7 +105,7 @@ public:
                 ripples[i].radius++;
                 
                 // Decrease intensity as the ripple expands
-                ripples[i].intensity = max(0, ripples[i].intensity - 15);
+                ripples[i].intensity = max(0, ripples[i].intensity - 5);
                 
                 // Deactivate if the ripple has reached its maximum radius or faded out
                 if (ripples[i].radius >= ripples[i].maxRadius || ripples[i].intensity == 0) {
@@ -388,14 +388,14 @@ public:
     }
 
     // Start a Perlin noise effect
-    void startPerlinNoise(float scale = 0.15, uint8_t brightness = 128) {
+    void startPerlinNoise(float scale = 0.08, uint8_t brightness = 128) {
         perlinActive = true;
         perlinScale = scale;
         perlinTime = 0.0;
         perlinHue = random8();
         perlinBrightness = brightness;
         perlinHueSpeed = random8(1, 5);
-        perlinTimeScale = random8(1, 5) / 100.0;
+        perlinTimeScale = random8(1, 10) / 100.0;
     }
     
     // Stop Perlin noise effect
@@ -429,7 +429,7 @@ public:
                 uint8_t brightness = map(noiseValue * 255, 0, 255, 20, perlinBrightness);
                 
                 // Create a color based on position and noise value
-                uint8_t hue = perlinHue + map(noiseValue * 255, 0, 255, 0, 64);
+                uint8_t hue = perlinHue + map(noiseValue * 255, 0, 255, 0, 32);
                 
                 // Get the pixel index
                 uint16_t pixelIndex = xyFunc(x, y);

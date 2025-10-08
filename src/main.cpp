@@ -7,6 +7,7 @@
 #include "lookup_tables.h"
 #include "simd_utils.h"
 #include "matrix_effects.h"
+#include "palettes.h"
 
 // Constants for the spatial grid
 const int GRID_CELLS_X = 8; // Number of grid cells horizontally
@@ -24,6 +25,7 @@ uint8_t viewDirX = 1;
 uint8_t viewDirY = 1;
 uint8_t paletteIndex = 0;
 uint8_t palcount = 0;
+bool velocityBasedHue = false; // Toggle for velocity-direction based coloring
 uint8_t countstep = 5;
 int countdir = 1;
 float maxspeedstep = 0.1;
@@ -91,114 +93,6 @@ bool useRepulsors = false;
 unsigned long lastRippleTime = 0;
 unsigned long rippleInterval = 0; // Random interval
 
-#pragma region
-///Pallet definitinos and swapping
-const static TProgmemRGBPalette16 GreenAuroraColors_p FL_PROGMEM = {0x000000, 0x003300, 0x006600, 0x009900, 0x00cc00, 0x00ff00, 0x33ff00, 0x66ff00, 0x99ff00, 0xccff00, 0xffff00, 0xffcc00, 0xff9900, 0xff6600, 0xff3300, 0xff0000};
-const static TProgmemRGBPalette16 WoodFireColors_p FL_PROGMEM = {CRGB::Black, 0x330e00, 0x661c00, 0x992900, 0xcc3700, CRGB::OrangeRed, 0xff5800, 0xff6b00, 0xff7f00, 0xff9200, CRGB::Orange, 0xffaf00, 0xffb900, 0xffc300, 0xffcd00, CRGB::Gold};             //* Orange
-const static TProgmemRGBPalette16 NormalFire_p FL_PROGMEM = {CRGB::Black, 0x330000, 0x660000, 0x990000, 0xcc0000, CRGB::Red, 0xff0c00, 0xff1800, 0xff2400, 0xff3000, 0xff3c00, 0xff4800, 0xff5400, 0xff6000, 0xff6c00, 0xff7800};                             // пытаюсь сделать что-то более приличное
-const static TProgmemRGBPalette16 NormalFire2_p FL_PROGMEM = {CRGB::Black, 0x560000, 0x6b0000, 0x820000, 0x9a0011, CRGB::FireBrick, 0xc22520, 0xd12a1c, 0xe12f17, 0xf0350f, 0xff3c00, 0xff6400, 0xff8300, 0xffa000, 0xffba00, 0xffd400};                      // пытаюсь сделать что-то более приличное
-const static TProgmemRGBPalette16 LithiumFireColors_p FL_PROGMEM = {CRGB::Black, 0x240707, 0x470e0e, 0x6b1414, 0x8e1b1b, CRGB::FireBrick, 0xc14244, 0xd16166, 0xe08187, 0xf0a0a9, CRGB::Pink, 0xff9ec0, 0xff7bb5, 0xff59a9, 0xff369e, CRGB::DeepPink};        //* Red
-const static TProgmemRGBPalette16 SodiumFireColors_p FL_PROGMEM = {CRGB::Black, 0x332100, 0x664200, 0x996300, 0xcc8400, CRGB::Orange, 0xffaf00, 0xffb900, 0xffc300, 0xffcd00, CRGB::Gold, 0xf8cd06, 0xf0c30d, 0xe9b913, 0xe1af1a, CRGB::Goldenrod};           //* Yellow
-const static TProgmemRGBPalette16 CopperFireColors_p FL_PROGMEM = {CRGB::Black, 0x001a00, 0x003300, 0x004d00, 0x006600, CRGB::Green, 0x239909, 0x45b313, 0x68cc1c, 0x8ae626, CRGB::GreenYellow, 0x94f530, 0x7ceb30, 0x63e131, 0x4bd731, CRGB::LimeGreen};     //* Green
-const static TProgmemRGBPalette16 ZAlcoholFireColors_p FL_PROGMEM = {CRGB::Black, 0x000033, 0x000066, 0x000099, 0x0000cc, CRGB::Blue, 0x0026ff, 0x004cff, 0x0073ff, 0x0099ff, CRGB::DeepSkyBlue, 0x1bc2fe, 0x36c5fd, 0x51c8fc, 0x6ccbfb, CRGB::LightSkyBlue};  //* Blue
-const static TProgmemRGBPalette16 ZRubidiumFireColors_p FL_PROGMEM = {CRGB::Red, 0x0f001a, 0x1e0034, 0x2d004e, 0x3c0068, CRGB::Red, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, CRGB::Indigo, 0x3c0084, 0x2d0086, 0x1e0087, 0x0f0089, CRGB::Red};        //* Indigo
-const static TProgmemRGBPalette16 darkishColors_p FL_PROGMEM = {0xFFcbbcaa,0xFF72ac92,0xFF797997,0xFF756372,0xFF638d54,0xFF606a40,0xFF4e4843,0xFF1a2f27,0xFFb6a588,0xFFa7889f,0xFFa17b6d,0xFF877041,0xFF725356,0xFF4e372c,0xFF3e2230,0xFF000000};
-const static TProgmemRGBPalette16 sixteen1Colors_p FL_PROGMEM = {0xFF53437f,0xFFa89fcc,0xFFffffff,0xFFffd9e8,0xFFff9bb6,0xFF9968e2,0xFFbe9bff,0xFF7fceff,0xFF6d81ff,0xFF2c6f99,0xFF00bcaa,0xFFc48f9e,0xFF8e586f,0xFFff5470,0xFFff9b71,0xFFffd9ae};
-const static TProgmemRGBPalette16 sixteen2Colors_p FL_PROGMEM = {0xFF4d004c,0xFF8f0076,0xFFc70083,0xFFf50078,0xFFff4764,0xFFff9393,0xFFffd5cc,0xFFfff3f0,0xFF000221,0xFF000769,0xFF00228f,0xFF0050c7,0xFF008bf5,0xFF00bbff,0xFF47edff,0xFF93fff8};
-const static TProgmemRGBPalette16 sixteen3Colors_p FL_PROGMEM = {0xFF000000,0xFF7e7e7e,0xFFbebebe,0xFFffffff,0xFF7e0000,0xFFfe0000,0xFF047e00,0xFF06ff04,0xFF7e7e00,0xFFffff04,0xFF00007e,0xFF0000ff,0xFF7e007e,0xFFfe00ff,0xFF047e7e,0xFF06ffff};
-const static TProgmemRGBPalette16 sixteen4Colors_p FL_PROGMEM = {0xFF2a1e1e,0xFF664933,0xFF28291d,0xFF576632,0xFF251d29,0xFF643266,0xFF291d22,0xFF663237,0xFF29221d,0xFF665932,0xFF1d2629,0xFF324b66,0xFF1d2920,0xFF32664d,0xFF1f1d29,0xFF483266};
-const static TProgmemRGBPalette16 sixteen5Colors_p FL_PROGMEM = {0xFF313432,0xFF323e42,0xFF454b4b,0xFF3a5f3b,0xFF7c4545,0xFF675239,0xFF625055,0xFF516b43,0xFF796c64,0xFF718245,0xFF9e805c,0xFF998579,0xFFac9086,0xFFa6a296,0xFFb4ab8f,0xFFbcb7a5};
-const static TProgmemRGBPalette16 sixteen6Colors_p FL_PROGMEM = {0X42243c,0X4e253d,0X59263d,0X64273a,0X6d2936,0X752d30,0X7c3228,0X803a1f,0X814214,0X804c04,0X7c5700,0X756100,0X6b6c00,0X5e7600,0X4b8000,0X2c8a00};
-const static TProgmemRGBPalette16 sixteen7Colors_p FL_PROGMEM = {0Xff0000,0Xfd3500,0Xfa4e00,0Xf66300,0Xef7600,0Xe68600,0Xd4a300,0Xc9b000,0Xbdbc00,0Xb0c800,0Xa1d300,0X8fdf00,0X76ea00,0X54f500,0X04ff00,0X00ff00};
-const static TProgmemRGBPalette16 sixteen8Colors_p FL_PROGMEM = {0X0036ff,0X5023e6,0X6904ce,0X7600b6,0X7b009a,0X7a0081,0X77006c,0X72005b,0X6c004c,0X65003e,0X5e0033,0X570028,0X50001e,0X450017,0X3b030f,0X300808};
-const TProgmemRGBPalette16* currentPalette_p = &GreenAuroraColors_p;
-
-void SetNewPalette(int _palcount)
-{  
-  switch (_palcount)
-  {    
-  case 0:    
-    currentPalette_p = &GreenAuroraColors_p;
-    break;
-  case 1:
-    currentPalette_p = &WoodFireColors_p;
-    break;
-  case 2:
-    currentPalette_p = &NormalFire_p;
-    break;
-  case 3:
-    currentPalette_p = &NormalFire2_p;
-    break;
-  case 4:
-    currentPalette_p = &LithiumFireColors_p;
-    break;
-  case 5:
-    currentPalette_p = &SodiumFireColors_p;
-    break;
-  case 6:
-    currentPalette_p = &CopperFireColors_p;
-    break;
-  case 7:
-    currentPalette_p = &ZAlcoholFireColors_p;
-    break;
-  case 8:
-    currentPalette_p = &ZRubidiumFireColors_p;
-    break;
-  case 9:
-    currentPalette_p = &PartyColors_p;
-    break;
-  case 10:
-    currentPalette_p = &CloudColors_p;
-    break;
-  case 11:
-    currentPalette_p = &LavaColors_p;
-    break;
-  case 12:
-    currentPalette_p = &OceanColors_p;
-    break;
-  case 13:
-    currentPalette_p = &ForestColors_p;
-    break;
-  case 14:
-    currentPalette_p = &RainbowColors_p;
-    break;
-  case 15:
-    currentPalette_p = &RainbowStripeColors_p;
-    break; 
-  case 16:
-  currentPalette_p = &darkishColors_p;
-  break;
-  case 17:
-  currentPalette_p = &sixteen1Colors_p;
-  break;
-  case 18:
-  currentPalette_p = &sixteen2Colors_p;
-  break;
-  case 19:
-  currentPalette_p = &sixteen3Colors_p;
-  break;
-  case 20:
-  currentPalette_p = &sixteen4Colors_p;
-  break;
-  case 21:
-  currentPalette_p = &sixteen5Colors_p;
-  break;  
-  case 22:
-  currentPalette_p = &sixteen6Colors_p;
-  break;
-  case 23:
-  currentPalette_p = &sixteen7Colors_p;
-  break;
-  case 24:
-  currentPalette_p = &sixteen8Colors_p;
-  break;
-
-  default:
-    currentPalette_p = &GreenAuroraColors_p;
-    break;
-  }
-}
-#pragma endregion
 // Define the viewport size (same as your physical display)
 //boid class to make the particles interact with eaother
 #pragma region
@@ -297,6 +191,8 @@ class Attractor {
     float minDistance = 15.0; // Minimum distance to prevent extreme forces
     CRGB color = CRGB::Blue; // Visual color for debugging
     bool showVisually = false; // Whether to show this attractor visually
+    bool hasVortex = false; // Whether to apply rotational force
+    float vortexStrength = 0.5; // Strength of the vortex effect
     
     Attractor() {
       location = PVector((virtualViewX + 12 / 2), (virtualViewY + 12 / 2));
@@ -329,6 +225,11 @@ class Attractor {
     void setRadius(float minDist, float maxDist) {
       minDistance = minDist;
       maxInfluenceRadius = maxDist;
+    }
+    
+    void setVortex(bool enabled, float strength = 0.5) {
+      hasVortex = enabled;
+      vortexStrength = strength;
     }
     
     void incrementMass() {
@@ -394,6 +295,18 @@ class Attractor {
       }
       
       force *= strength; // Get force vector --> magnitude * direction
+      
+      // Add vortex/rotational component if enabled
+      if (hasVortex && strength > 0.001) { // Safety check
+        PVector tangent = force.ortho(); // Perpendicular vector for rotation
+        float tangentMag = tangent.mag();
+        if (tangentMag > 0.001) { // Prevent normalization of zero vector
+          tangent.normalize();
+          tangent *= strength * vortexStrength;
+          force += tangent;
+        }
+      }
+      
       return force;
     }
   };
@@ -416,14 +329,35 @@ Attractor attractorBottomLeft;  // Attractor in bottom-left corner
 Attractor attractorBottomRight; // Attractor in bottom-right corner
 Attractor repulsorCenter;       // Repulsor in center (pushes boids away)
 
+// New attractors for advanced patterns
+Attractor attractorSquare1;     // Rotating square pattern
+Attractor attractorSquare2;
+Attractor attractorSquare3;
+Attractor attractorSquare4;
+Attractor attractorFigure8_1;   // Figure-8 pattern
+Attractor attractorFigure8_2;
+Attractor attractorSpiral1;     // Spiral pattern
+Attractor attractorSpiral2;
+Attractor attractorSpiral3;
+Attractor attractorVortex;      // Central vortex attractor
+Attractor explosionRepulsor;    // Temporary explosion effect
+
 // Array of attractors for easier management
-const int MAX_ATTRACTORS = 7;
+const int MAX_ATTRACTORS = 17;
 Attractor* attractorArray[MAX_ATTRACTORS];
-bool attractorActive[MAX_ATTRACTORS] = {true, false, false, false, false, false, false};
+bool attractorActive[MAX_ATTRACTORS] = {true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false};
 
 // Current attractor pattern index
 int currentAttractorPattern = 0;
-const int NUM_ATTRACTOR_PATTERNS = 6;
+const int NUM_ATTRACTOR_PATTERNS = 11;
+
+// Explosion state
+bool explosionActive = false;
+unsigned long explosionStartTime = 0;
+unsigned long lastExplosionTime = 0;
+
+// Debug flag
+#define DEBUG_SERIAL true
 
 Boid boids[NUM_PARTICLES];
 int degreestep = 1;
@@ -441,6 +375,19 @@ void initAttractorPatterns() {
   attractorArray[4] = &attractorBottomLeft;
   attractorArray[5] = &attractorBottomRight;
   attractorArray[6] = &repulsorCenter;
+  attractorArray[7] = &attractorSquare1;
+  attractorArray[8] = &attractorSquare2;
+  attractorArray[9] = &attractorSquare3;
+  attractorArray[10] = &attractorSquare4;
+  attractorArray[11] = &attractorFigure8_1;
+  attractorArray[12] = &attractorFigure8_2;
+  attractorArray[13] = &attractorSpiral1;
+  attractorArray[14] = &attractorSpiral2;
+  attractorArray[15] = &attractorSpiral3;
+  attractorArray[16] = &attractorVortex;
+  
+  float centerX = virtualViewX + VIRTUAL_COLS / 2;
+  float centerY = virtualViewY + VIRTUAL_ROWS / 2;
   
   // Initialize corner attractors
   attractorTopLeft.setlocation(virtualViewX + 8, virtualViewY + 8);
@@ -468,15 +415,102 @@ void initAttractorPatterns() {
   attractorBottomRight.color = CRGB::Aqua;
   
   // Initialize repulsor
-  repulsorCenter.setlocation(virtualViewX + VIRTUAL_COLS/2, virtualViewY + VIRTUAL_ROWS/2);
+  repulsorCenter.setlocation(centerX, centerY);
   repulsorCenter.setMass(50);
   repulsorCenter.setG(3.0);
   repulsorCenter.setRepulsor(true);
   repulsorCenter.setRadius(5.0, 120.0);
+  
+  // Initialize rotating square attractors
+  attractorSquare1.setlocation(centerX, centerY);
+  attractorSquare1.setMass(25);
+  attractorSquare1.setG(1.8);
+  attractorSquare1.setRadius(10.0, 90.0);
+  attractorSquare1.color = CRGB::Cyan;
+  
+  attractorSquare2.setlocation(centerX, centerY);
+  attractorSquare2.setMass(25);
+  attractorSquare2.setG(1.8);
+  attractorSquare2.setRadius(10.0, 90.0);
+  attractorSquare2.color = CRGB::Magenta;
+  
+  attractorSquare3.setlocation(centerX, centerY);
+  attractorSquare3.setMass(25);
+  attractorSquare3.setG(1.8);
+  attractorSquare3.setRadius(10.0, 90.0);
+  attractorSquare3.color = CRGB::Orange;
+  
+  attractorSquare4.setlocation(centerX, centerY);
+  attractorSquare4.setMass(25);
+  attractorSquare4.setG(1.8);
+  attractorSquare4.setRadius(10.0, 90.0);
+  attractorSquare4.color = CRGB::Lime;
+  
+  // Initialize figure-8 attractors
+  attractorFigure8_1.setlocation(centerX, centerY);
+  attractorFigure8_1.setMass(30);
+  attractorFigure8_1.setG(2.0);
+  attractorFigure8_1.setRadius(10.0, 100.0);
+  attractorFigure8_1.color = CRGB::HotPink;
+  
+  attractorFigure8_2.setlocation(centerX, centerY);
+  attractorFigure8_2.setMass(30);
+  attractorFigure8_2.setG(2.0);
+  attractorFigure8_2.setRadius(10.0, 100.0);
+  attractorFigure8_2.color = CRGB::DeepSkyBlue;
+  
+  // Initialize spiral attractors
+  attractorSpiral1.setlocation(centerX, centerY);
+  attractorSpiral1.setMass(20);
+  attractorSpiral1.setG(1.5);
+  attractorSpiral1.setRadius(10.0, 85.0);
+  attractorSpiral1.color = CRGB::Gold;
+  
+  attractorSpiral2.setlocation(centerX, centerY);
+  attractorSpiral2.setMass(20);
+  attractorSpiral2.setG(1.5);
+  attractorSpiral2.setRadius(10.0, 85.0);
+  attractorSpiral2.color = CRGB::Violet;
+  
+  attractorSpiral3.setlocation(centerX, centerY);
+  attractorSpiral3.setMass(20);
+  attractorSpiral3.setG(1.5);
+  attractorSpiral3.setRadius(10.0, 85.0);
+  attractorSpiral3.color = CRGB::Turquoise;
+  
+  // Initialize vortex attractor
+  attractorVortex.setlocation(centerX, centerY);
+  attractorVortex.setMass(40);
+  attractorVortex.setG(2.5);
+  attractorVortex.setRadius(5.0, 110.0);
+  attractorVortex.setVortex(true, 0.8);
+  attractorVortex.color = CRGB::Purple;
+  
+  // Initialize explosion repulsor (inactive by default)
+  explosionRepulsor.setlocation(centerX, centerY);
+  explosionRepulsor.setMass(60);  // Reduced from 100
+  explosionRepulsor.setG(4.0);     // Reduced from 8.0
+  explosionRepulsor.setRepulsor(true);
+  explosionRepulsor.setRadius(5.0, 100.0);  // Reduced max radius from 150 to 100
+  explosionRepulsor.color = CRGB::Red;
 }
 
 // Switch to a new attractor pattern
 void setAttractorPattern(int patternIndex) {
+  #if DEBUG_SERIAL
+  Serial.print("[PATTERN] Switching to pattern: ");
+  Serial.println(patternIndex);
+  #endif
+  
+  // Bounds check
+  if (patternIndex < 0 || patternIndex >= NUM_ATTRACTOR_PATTERNS) {
+    #if DEBUG_SERIAL
+    Serial.print("[ERROR] Invalid pattern index: ");
+    Serial.println(patternIndex);
+    #endif
+    return;
+  }
+  
   // Reset all attractors to inactive
   for (int i = 0; i < MAX_ATTRACTORS; i++) {
     attractorActive[i] = false;
@@ -518,6 +552,32 @@ void setAttractorPattern(int patternIndex) {
       
     case 5: // Central repulsor only
       attractorActive[6] = true; // Central repulsor
+      break;
+      
+    case 6: // Rotating square
+      attractorActive[7] = true;  // Square 1
+      attractorActive[8] = true;  // Square 2
+      attractorActive[9] = true;  // Square 3
+      attractorActive[10] = true; // Square 4
+      break;
+      
+    case 7: // Figure-8
+      attractorActive[11] = true; // Figure-8 attractor 1
+      attractorActive[12] = true; // Figure-8 attractor 2
+      break;
+      
+    case 8: // Pulsing center (just main attractor with enhanced pulsing)
+      // Main attractor already active
+      break;
+      
+    case 9: // Spiral arms
+      attractorActive[13] = true; // Spiral 1
+      attractorActive[14] = true; // Spiral 2
+      attractorActive[15] = true; // Spiral 3
+      break;
+      
+    case 10: // Central vortex
+      attractorActive[16] = true; // Vortex attractor
       break;
   }
   
@@ -567,14 +627,182 @@ void updateAttractors() {
     attractorArray[6]->setG(1.0 + pulseFactor * 3.0); // 1.0 to 4.0
   }
   
+  // Update rotating square pattern (attractors 7-10)
+  if (attractorActive[7] || attractorActive[8] || attractorActive[9] || attractorActive[10]) {
+    float squareRadius = 15;
+    float squareSpeed = 0.4;
+    float time = millis() / 1000.0;
+    
+    if (attractorActive[7]) {
+      float angle = time * squareSpeed;
+      attractorArray[7]->setlocation(
+        centerX + squareRadius * cos(angle),
+        centerY + squareRadius * sin(angle)
+      );
+    }
+    if (attractorActive[8]) {
+      float angle = time * squareSpeed + PI / 2;
+      attractorArray[8]->setlocation(
+        centerX + squareRadius * cos(angle),
+        centerY + squareRadius * sin(angle)
+      );
+    }
+    if (attractorActive[9]) {
+      float angle = time * squareSpeed + PI;
+      attractorArray[9]->setlocation(
+        centerX + squareRadius * cos(angle),
+        centerY + squareRadius * sin(angle)
+      );
+    }
+    if (attractorActive[10]) {
+      float angle = time * squareSpeed + PI * 1.5;
+      attractorArray[10]->setlocation(
+        centerX + squareRadius * cos(angle),
+        centerY + squareRadius * sin(angle)
+      );
+    }
+  }
+  
+  // Update figure-8 pattern (attractors 11-12)
+  if (attractorActive[11] || attractorActive[12]) {
+    float time = millis() / 1000.0;
+    float speed = 0.5;
+    float width = 18;
+    float height = 10;
+    
+    if (attractorActive[11]) {
+      // Lemniscate (figure-8) parametric equations
+      float t = time * speed;
+      float sinT = sin(t);
+      float cosT = cos(t);
+      float denominator = 1.0f + sinT * sinT;
+      if (denominator > 0.1f) { // Safety check
+        float scale = width / denominator;
+        float x = centerX + scale * cosT;
+        float y = centerY + height * sinT * cosT;
+        attractorArray[11]->setlocation(x, y);
+      }
+    }
+    
+    if (attractorActive[12]) {
+      // Second attractor on opposite phase
+      float t = time * speed + PI;
+      float sinT = sin(t);
+      float cosT = cos(t);
+      float denominator = 1.0f + sinT * sinT;
+      if (denominator > 0.1f) { // Safety check
+        float scale = width / denominator;
+        float x = centerX + scale * cosT;
+        float y = centerY + height * sinT * cosT;
+        attractorArray[12]->setlocation(x, y);
+      }
+    }
+  }
+  
+  // Update pulsing center pattern (attractor 0 with enhanced pulsing)
+  if (currentAttractorPattern == 8 && attractorActive[0]) {
+    // Enhanced pulsing for this pattern
+    float pulseFactor = (sin(millis() / 500.0) + 1) / 2.0; // Faster pulse
+    attractorArray[0]->setMass(10 + pulseFactor * 60); // 10 to 70
+    attractorArray[0]->setG(0.5 + pulseFactor * 3.5); // 0.5 to 4.0
+  }
+  
+  // Update spiral pattern (attractors 13-15)
+  if (attractorActive[13] || attractorActive[14] || attractorActive[15]) {
+    float time = millis() / 1000.0;
+    float spiralSpeed = 0.6;
+    float spiralRadius = 16;
+    
+    if (attractorActive[13]) {
+      attractorArray[13]->orbit(centerX, centerY, spiralRadius, spiralSpeed, 0);
+    }
+    if (attractorActive[14]) {
+      attractorArray[14]->orbit(centerX, centerY, spiralRadius, spiralSpeed, (2 * PI) / 3);
+    }
+    if (attractorActive[15]) {
+      attractorArray[15]->orbit(centerX, centerY, spiralRadius, spiralSpeed, (4 * PI) / 3);
+    }
+  }
+  
+  // Update vortex attractor (attractor 16)
+  if (attractorActive[16]) {
+    // Vortex slowly orbits and pulses
+    attractorArray[16]->orbit(centerX, centerY, 5, 0.15, 0);
+    float pulseFactor = (sin(millis() / 800.0) + 1) / 2.0;
+    attractorArray[16]->setG(1.5 + pulseFactor * 2.0); // 1.5 to 3.5
+  }
+  
+  // Handle explosion effect
+  if (explosionActive) {
+    // Explosion lasts 500ms
+    if (millis() - explosionStartTime > 500) {
+      explosionActive = false;
+      #if DEBUG_SERIAL
+      Serial.println("[EXPLOSION] Ended");
+      #endif
+    }
+  } else {
+    // Randomly trigger explosions (5% chance every 30-90 seconds)
+    if (millis() - lastExplosionTime > 30000 && random8() < 13) {
+      #if DEBUG_SERIAL
+      Serial.println("[EXPLOSION] Starting!");
+      #endif
+      explosionActive = true;
+      explosionStartTime = millis();
+      lastExplosionTime = millis();
+      float explodeX = centerX + random(0, 20) - 10;
+      float explodeY = centerY + random(0, 20) - 10;
+      
+      // Constrain to virtual canvas bounds
+      explodeX = constrain(explodeX, virtualViewX + 2, virtualViewX + VIRTUAL_COLS - 2);
+      explodeY = constrain(explodeY, virtualViewY + 2, virtualViewY + VIRTUAL_ROWS - 2);
+      
+      #if DEBUG_SERIAL
+      Serial.print("[EXPLOSION] Location: ");
+      Serial.print(explodeX);
+      Serial.print(", ");
+      Serial.println(explodeY);
+      Serial.print("[EXPLOSION] centerX: ");
+      Serial.print(centerX);
+      Serial.print(", centerY: ");
+      Serial.println(centerY);
+      #endif
+      explosionRepulsor.setlocation(explodeX, explodeY);
+      
+      // Trigger visual effects with reduced intensity
+      if (matrixEffects) {
+        matrixEffects->startScreenShake(8, 2);  // Reduced from (10, 3) to (8, 2)
+        matrixEffects->startRipple();
+        delay(50);  // Small delay between ripples
+        matrixEffects->startRipple();
+      }
+    }
+  }
+  
   // Check if it's time to change attractor pattern
   if (millis() - lastAttractorChangeTime > attractorChangeDuration) {
+    #if DEBUG_SERIAL
+    Serial.println("[PATTERN] Time to switch patterns");
+    #endif
     // Change to a new random pattern
     int newPattern = random(0, NUM_ATTRACTOR_PATTERNS);
-    while (newPattern == currentAttractorPattern) {
+    int attempts = 0;
+    while (newPattern == currentAttractorPattern && attempts < 20) {
       newPattern = random(0, NUM_ATTRACTOR_PATTERNS);
+      attempts++;
     }
+    #if DEBUG_SERIAL
+    Serial.print("[PATTERN] Selected new pattern after ");
+    Serial.print(attempts);
+    Serial.print(" attempts: ");
+    Serial.println(newPattern);
+    #endif
     setAttractorPattern(newPattern);
+    
+    // Randomly toggle velocity-based hue (30% chance)
+    if (random8() < 77) {
+      velocityBasedHue = !velocityBasedHue;
+    }
     
     // Trigger special effects when changing patterns
     if (matrixEffects) {
@@ -606,7 +834,6 @@ void start()
   {
     boids[i] = Boid(random(COLS), 0);
   }
-  currentPalette_p = &GreenAuroraColors_p;
   
   // Initialize the main attractors
   attractor1.setlocation((virtualViewX+24/ 2), (virtualViewY+24/ 2));
@@ -771,7 +998,7 @@ void randomSlowDownAndSpeed() {
     }
 }
 void draw() {
-    // Animation timing variables
+  //  Animation timing variables
     int randomnum = random(0,100);
     movetocenterrandom = random(0,200);
     if (randomnum == 5) stopbool = true;
@@ -900,19 +1127,36 @@ void draw() {
           }
       }
       
+      // Apply explosion repulsor force if active
+      if (explosionActive) {
+          PVector explosionForce = explosionRepulsor.attract(*boid);
+          boid->applyForce(explosionForce);
+      }
+      
       // Use the optimized update method with spatial grid
       
       boid->wrapAroundBorders(VIRTUAL_ROWS, VIRTUAL_COLS);
       boid->brightness = map(boid->velocity.x + boid->velocity.y, 0.1, 4.5, 25, 255);
       boid->mass = (255-count)/6;
       boid->update(*spatialGrid);
-      // Apply screen shake offset when drawing
-      float drawX = boid->location.x + shakeOffsetX;
-      float drawY = boid->location.y + shakeOffsetY;
-      drawPixelXYF(drawX, drawY, ColorFromPalette(*currentPalette_p, boid->hue * 15, boid->brightness, NOBLEND));
-      
+     // Apply screen shake offset when drawing
+     float drawX = boid->location.x + shakeOffsetX;
+     float drawY = boid->location.y + shakeOffsetY;
+     
+     // Calculate hue based on velocity direction if enabled
+     uint8_t renderHue;
+     if (velocityBasedHue) {
+         // Map velocity angle to hue (0-255)
+         float angle = atan2(boid->velocity.y, boid->velocity.x);
+         renderHue = (uint8_t)((angle + PI) * 40.7436f); // Map -PI to PI -> 0 to 255
+     } else {
+         renderHue = boid->hue * 15;
+     }
+     
+     drawPixelXYF(drawX, drawY, ColorFromPalette(*currentPalette_p, renderHue, boid->brightness, NOBLEND));//
+     // drawPixelXYF(drawX, drawY, ColorFromPalette(*currentPalette_p, 0, 0, NOBLEND));
       boid->neighbordist = neidist;
-      boid->desiredseparation = boidsep;
+     boid->desiredseparation = boidsep;
       
       if (stopbool == true) {
           boid->velocity = PVector(0, 0);
@@ -922,11 +1166,19 @@ void draw() {
     LEDS.show();
     
     // Increment step count
-    stepcount += 0.1;
+  //  stepcount += 0.1;
 }
 
 void setup() {
-    Serial.begin(115200);
+   #if DEBUG_SERIAL
+   Serial.begin(115200);
+   delay(1000);
+   Serial.println("\n\n[SETUP] Starting WS2812B Boid Animation");
+   Serial.print("[SETUP] NUM_ATTRACTOR_PATTERNS: ");
+   Serial.println(NUM_ATTRACTOR_PATTERNS);
+   Serial.print("[SETUP] MAX_ATTRACTORS: ");
+   Serial.println(MAX_ATTRACTORS);
+   #endif
     // Initialize SIMD functionality
     init_simd();
     randomSeed(analogRead(0));
@@ -953,7 +1205,7 @@ void setup() {
     LEDS.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
     LEDS.setBrightness(BRIGHTNESS);
     
-    Serial.println("WS2812B Boids with Spatial Partitioning, Matrix Effects, and Dynamic Attractors");
+  //  Serial.println("WS2812B Boids with Spatial Partitioning, Matrix Effects, and Dynamic Attractors");
 }
 
 void loop() {
