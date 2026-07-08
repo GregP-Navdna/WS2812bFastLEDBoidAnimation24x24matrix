@@ -8,4 +8,6 @@ include
 .vscode
 .snapshots
 test
+simulator/node_modules
+simulator/dist
 

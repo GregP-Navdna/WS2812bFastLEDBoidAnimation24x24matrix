@@ -2,6 +2,10 @@
     "files.associations": {
         "vector": "cpp",
         "*.tcc": "cpp",
-        "fstream": "cpp"
+        "fstream": "cpp",
+        "array": "cpp",
+        "algorithm": "cpp",
+        "random": "cpp",
+        "numeric": "cpp"
     }
 }

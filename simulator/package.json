@@ -1,0 +1,14 @@
+{
+  "name": "boid-led-simulator",
+  "version": "1.0.0",
+  "description": "Browser-based 24x24 LED matrix simulator for WS2812B boid animation",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

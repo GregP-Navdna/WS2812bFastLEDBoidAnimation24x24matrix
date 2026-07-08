@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WS2812B Boid LED Matrix Simulator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0f;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border-bottom: 1px solid #2a2a4a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #7fdbca;
+      letter-spacing: 0.5px;
+    }
+
+    header h1 span {
+      color: #c792ea;
+      font-weight: 400;
+    }
+
+    #stats {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: #8892b0;
+      flex-wrap: wrap;
+    }
+
+    #stats b {
+      color: #64ffda;
+      font-weight: 500;
+    }
+
+    .main-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      gap: 24px;
+      flex-wrap: wrap;
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    .canvas-wrapper {
+      background: #0d0d0d;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow:
+        0 0 0 1px rgba(100, 255, 218, 0.1),
+        0 8px 32px rgba(0, 0, 0, 0.5),
+        0 0 60px rgba(100, 255, 218, 0.03);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 400px;
+      min-height: 400px;
+      width: 60vmin;
+      height: 60vmin;
+      max-width: 600px;
+      max-height: 600px;
+    }
+
+    #led-canvas {
+      image-rendering: pixelated;
+      border-radius: 4px;
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 220px;
+      max-width: 260px;
+    }
+
+    .control-group {
+      background: #12121f;
+      border: 1px solid #1e1e3a;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .control-group label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64ffda;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #1a1a2e;
+      color: #ccd6f6;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    select:hover, select:focus {
+      border-color: #64ffda;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      flex: 1;
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #1a1a3e 0%, #2a2a5e 100%);
+      color: #ccd6f6;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+
+    button:hover {
+      background: linear-gradient(135deg, #2a2a5e 0%, #3a3a7e 100%);
+      border-color: #64ffda;
+      color: #64ffda;
+    }
+
+    button:active {
+      transform: scale(0.97);
+    }
+
+    .btn-explode {
+      background: linear-gradient(135deg, #3e1a1a 0%, #5e2a2a 100%);
+      border-color: #6a3a3a;
+    }
+
+    .btn-explode:hover {
+      background: linear-gradient(135deg, #5e2a2a 0%, #7e3a3a 100%);
+      border-color: #ff6464;
+      color: #ff6464;
+    }
+
+    .effects-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .effects-grid button {
+      padding: 7px 6px;
+      font-size: 11px;
+    }
+
+    .btn-effect {
+      background: linear-gradient(135deg, #1a2e1a 0%, #2a4e2a 100%);
+      border-color: #3a5a3a;
+    }
+
+    .btn-effect:hover {
+      background: linear-gradient(135deg, #2a4e2a 0%, #3a6e3a 100%);
+      border-color: #64ffaa;
+      color: #64ffaa;
+    }
+
+    .btn-random-fx {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, #2e1a2e 0%, #4e2a4e 100%);
+      border-color: #5a3a5a;
+    }
+
+    .btn-random-fx:hover {
+      background: linear-gradient(135deg, #4e2a4e 0%, #6e3a6e 100%);
+      border-color: #c792ea;
+      color: #c792ea;
+    }
+
+    footer {
+      padding: 8px;
+      font-size: 11px;
+      color: #4a4a6a;
+      text-align: center;
+    }
+
+    @media (max-width: 700px) {
+      .main-container {
+        flex-direction: column;
+        padding: 12px;
+      }
+      .canvas-wrapper {
+        min-width: 300px;
+        min-height: 300px;
+        width: 90vw;
+        height: 90vw;
+      }
+      .controls {
+        width: 100%;
+        max-width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+      .control-group { flex: 1; min-width: 150px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WS2812B Boid Simulator <span>24x24 Matrix</span></h1>
+    <div id="stats">
+      <span><b>FPS:</b> --</span>
+      <span><b>Boids:</b> --</span>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <div class="canvas-wrapper">
+      <canvas id="led-canvas"></canvas>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Palette</label>
+        <select id="palette-select"></select>
+      </div>
+
+      <div class="control-group">
+        <label>Attractor Pattern</label>
+        <select id="pattern-select"></select>
+      </div>
+
+      <div class="control-group">
+        <label>Actions</label>
+        <div class="btn-row">
+          <button id="btn-pause">&#x23F8; Pause</button>
+          <button id="btn-explode" class="btn-explode">&#x1F4A5; Explode</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>Effects</label>
+        <div class="effects-grid">
+          <button id="btn-meteor" class="btn-effect">&#x2604; Meteors</button>
+          <button id="btn-plasma" class="btn-effect">&#x1F30A; Plasma</button>
+          <button id="btn-lightning" class="btn-effect">&#x26A1; Lightning</button>
+          <button id="btn-pulse" class="btn-effect">&#x1F4AB; Pulse</button>
+          <button id="btn-spiral" class="btn-effect">&#x1F300; Spiral</button>
+          <button id="btn-fire" class="btn-effect">&#x1F525; Fire</button>
+          <button id="btn-sparkle" class="btn-effect">&#x2728; Sparkle</button>
+          <button id="btn-gravwell" class="btn-effect">&#x1F573; Gravity Well</button>
+          <button id="btn-random" class="btn-random-fx">&#x1F3B2; Random Effect</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Browser simulation of ESP32 WS2812B 24x24 LED Matrix Boid Animation
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

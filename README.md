@@ -518,7 +518,74 @@ virtualViewY = 16;
 - Check PlatformIO platform version is current
 - Try cleaning build cache: `pio run --target clean`
 
-## 🤝 Contributing
+## � Effect Framework
+
+Animations are organized as self-contained **effects** that share a common
+lifecycle and a common set of drawing helpers. `main.cpp` only wires up shared
+services and registers effects; all animation logic lives under `src/effects/`.
+
+**Core pieces**
+
+- `config.h` — central hardware/matrix constants (dimensions, pin, brightness).
+- `canvas.h` — `Canvas`: the shared pixel-placement layer (`setPixel`,
+  `blendPixel`, `drawPixelF` anti-aliased, `fade`, `clear`, `fill`, `show`).
+  Every effect draws through it so coordinate mapping and bounds checking live
+  in one place.
+- `effect.h` — the `Effect` base class and `EffectContext` (refs to the
+  `Canvas` and the shared overlay FX layer).
+- `effect_manager.h` — `EffectManager`: registry, active-effect tracking,
+  presentation (one `show()` per frame), and optional timed rotation.
+- `effects/*.h` — the individual scenes (see below).
+
+**Built-in effects** (registered in `main.cpp`, auto-rotated by the manager):
+
+- **Boids** — the original flocking/attractor simulation.
+- **Plasma** — animated sine plasma through the palette.
+- **Fire** — Fire2012-style flame simulation.
+- **Matrix Rain** — falling "digital rain" columns.
+- **Fireworks** — launching rockets that burst into sparks (gravity + trails).
+- **Meteor Shower** — diagonal meteors with glowing tails.
+- **Starfield** — 3D warp-speed starfield.
+- **Spiral** — rotating multi-arm galaxy (polar field).
+- **Wave Interference** — three moving wave sources forming interference fringes.
+- **Voronoi** — drifting Voronoi cells with dark boundaries.
+- **Ripple Rings** — expanding concentric rings spawned at random points.
+- **Game of Life** — Conway's Life on a toroidal grid with fading trails.
+- **Metaballs** — gooey "lava lamp" blobs from a summed inverse-square field.
+- **Aurora** — northern-lights curtains driven by layered Perlin noise.
+- **Noise Field** — smoothly flowing Perlin-noise color clouds.
+- **Tunnel** — demoscene infinite rotating/scrolling tunnel.
+- **Kaleidoscope** — 4-fold mirrored, moving noise pattern.
+- **3D Cube** — perspective-projected rotating wireframe cube.
+- **DNA Helix** — two intertwined sine strands with connecting rungs.
+- **Bouncing Balls** — gravity balls bouncing with energy loss and trails.
+- **Confetti** — random fading speckles with drifting hue.
+- **Spectrum Bars** — simulated audio equalizer with falling peak markers.
+
+**Adding a new effect (3 steps)**
+
+1. Create `src/effects/my_effect.h`:
+
+   ```cpp
+   #include "../effect.h"
+
+   class MyEffect : public Effect {
+   public:
+       const char* name() const override { return "MyEffect"; }
+       void update(EffectContext& ctx, uint32_t dtMs) override {
+           ctx.canvas.fade(CRGB::Black, 40);
+           ctx.canvas.drawPixelF(x, y, CRGB::Cyan);
+       }
+       // Optional: enter()/exit() for setup/teardown,
+       // suggestedDurationMs() to auto-rotate to the next effect.
+   };
+   ```
+
+2. `#include "effects/my_effect.h"` in `main.cpp` and declare an instance.
+3. Register it: `manager.add(&myEffect);` (the first registered effect boots
+   first; the manager calls `canvas.show()` for you).
+
+## �� Contributing
 
 Contributions are welcome! Areas for improvement:
 - Additional attractor patterns
