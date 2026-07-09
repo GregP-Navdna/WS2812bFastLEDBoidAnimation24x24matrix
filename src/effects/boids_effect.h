@@ -11,6 +11,7 @@
 #include "../canvas.h"
 #include "../palettes.h"
 #include "../effect.h"
+#include "../feedback.h"
 
 // rran/gran/bran are shared globals (rran is also consumed by simd_fade_to_color
 // in simd_utils.h). They are defined once in main.cpp.
@@ -26,6 +27,10 @@ extern int bran;
 // ---------------------------------------------------------------------------
 class BoidsEffect : public Effect {
 public:
+    // Milkdrop-style video feedback on the 48x48 virtual canvas. Public so the
+    // serial/debug interface in main.cpp can switch presets at runtime.
+    VideoFeedback feedback;
+
     const char* name() const override { return "Boids"; }
 
     // Run for 30s before the manager rotates to the next effect.
@@ -45,6 +50,10 @@ public:
         attractorChangeDuration = random(10000, 20000);
         lastRippleTime = millis();
         rippleInterval = random(3000, 8000);
+
+        feedback.clear();
+        lastFeedbackChangeTime = millis();
+        feedbackChangeDuration = random(20000, 40000);
     }
 
     void update(EffectContext& ctx, uint32_t dtMs) override {
@@ -92,14 +101,33 @@ public:
 
         updateAttractors(ctx);
 
-        // Apply overlay FX, then fade.
-        ctx.overlay.update(ctx.canvas.raw());
-        ctx.canvas.fade(CRGB::Black, 45);
+        // Feedback preset rotation (same timer mechanism as attractor patterns).
+        if (millis() - lastFeedbackChangeTime > feedbackChangeDuration) {
+            feedback.nextPreset();
+            lastFeedbackChangeTime = millis();
+            feedbackChangeDuration = random(20000, 40000);
+        }
+
+        const bool fbActive = feedback.enabled();
+
+        if (fbActive) {
+            // Step 1: resample prev virtual canvas -> current with transform +
+            // decay. The decay replaces the full-canvas fade below.
+            feedback.beginFrame();
+        } else {
+            // Original path (must stay pixel-identical when feedback is OFF):
+            // apply overlay FX, then fade.
+            ctx.overlay.update(ctx.canvas.raw());
+            ctx.canvas.fade(CRGB::Black, 45);
+        }
 
         // Occasionally move to center (self-contained sub-animation).
         if (movetocenterrandom == 100) {
             movetoCenter(ctx);
             movetocenterrandom = 0;
+            // movetoCenter ran its own feedback frames (with buffer swaps), so
+            // resample again before this frame's boid render.
+            if (fbActive) feedback.beginFrame();
         }
 
         if (stopbool) stopbool = false;
@@ -176,6 +204,28 @@ public:
 
             if (stopbool) boid->velocity = PVector(0, 0);
         }
+
+        if (fbActive) {
+            // Steps 5-6: extract the 24x24 viewport (through the serpentine
+            // Canvas::xy mapping), composite the overlay FX on top, then
+            // ping-pong the virtual buffers.
+            feedback.extractViewport(ctx.canvas, virtualViewX, virtualViewY);
+            ctx.overlay.update(ctx.canvas.raw());
+            feedback.endFrame();
+        }
+
+        #if DEBUG_SERIAL
+        EVERY_N_SECONDS(5) {
+            if (feedback.enabled()) {
+                Serial.print("[FEEDBACK] ");
+                Serial.print(feedback.presetName());
+                Serial.print(" pass: ");
+                Serial.print(feedback.lastPassMicros());
+                Serial.print(" us, FPS: ");
+                Serial.println(FastLED.getFPS());
+            }
+        }
+        #endif
         // NOTE: presentation (FastLED.show) is handled by the EffectManager.
     }
 
@@ -263,12 +313,20 @@ private:
     unsigned long attractorChangeDuration = 15000;
     unsigned long lastRippleTime = 0;
     unsigned long rippleInterval = 0;
+    unsigned long lastFeedbackChangeTime = 0;
+    unsigned long feedbackChangeDuration = 30000;
 
     // --- Drawing helper ---------------------------------------------------
-    // Map a virtual-canvas coordinate into the physical viewport and draw it
-    // with anti-aliasing through the shared Canvas.
+    // Draw a virtual-canvas coordinate with Wu anti-aliasing. When feedback is
+    // active, boids blend additively onto the recirculating virtual canvas
+    // (world space, so trails survive viewport movement); otherwise they map
+    // straight into the physical viewport as before.
     void drawVirtualF(EffectContext& ctx, float virtualX, float virtualY, CRGB color) {
-        ctx.canvas.drawPixelF(virtualX - virtualViewX, virtualY - virtualViewY, color);
+        if (feedback.enabled()) {
+            feedback.drawPixelF(virtualX, virtualY, color);
+        } else {
+            ctx.canvas.drawPixelF(virtualX - virtualViewX, virtualY - virtualViewY, color);
+        }
     }
 
     // --- Scene setup ------------------------------------------------------
@@ -687,6 +745,8 @@ private:
                 spatialGrid->insert(boid, boid->location.x, boid->location.y);
             }
 
+            if (feedback.enabled()) feedback.beginFrame();
+
             for (int i = 0; i < count; i++) {
                 Boid* boid = &boids[i];
                 PVector force1 = attractor1.attract(*boid);
@@ -703,8 +763,14 @@ private:
                 if (stopbool) boid->velocity = PVector(0, 0);
             }
 
-            ctx.overlay.update(ctx.canvas.raw());
-            ctx.canvas.fade(CRGB::Black, 45);
+            if (feedback.enabled()) {
+                feedback.extractViewport(ctx.canvas, virtualViewX, virtualViewY);
+                ctx.overlay.update(ctx.canvas.raw());
+                feedback.endFrame();
+            } else {
+                ctx.overlay.update(ctx.canvas.raw());
+                ctx.canvas.fade(CRGB::Black, 45);
+            }
             ctx.canvas.show();
         }
 

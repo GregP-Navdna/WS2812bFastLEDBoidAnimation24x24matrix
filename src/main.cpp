@@ -122,5 +122,22 @@ void setup() {
 }
 
 void loop() {
+    #if DEBUG_SERIAL
+    // Debug commands for the video feedback system:
+    //   f = cycle to the next feedback preset
+    //   0 = OFF, 1 = TUNNEL_IN, 2 = TUNNEL_OUT, 3 = SPIRAL, 4 = ECHO_DRIFT
+    while (Serial.available()) {
+        char c = Serial.read();
+        switch (c) {
+            case 'f': boidsEffect.feedback.nextPreset(); break;
+            case '0': boidsEffect.feedback.setPreset(FEEDBACK_OFF); break;
+            case '1': boidsEffect.feedback.setPreset(FEEDBACK_TUNNEL_IN); break;
+            case '2': boidsEffect.feedback.setPreset(FEEDBACK_TUNNEL_OUT); break;
+            case '3': boidsEffect.feedback.setPreset(FEEDBACK_SPIRAL); break;
+            case '4': boidsEffect.feedback.setPreset(FEEDBACK_ECHO_DRIFT); break;
+        }
+    }
+    #endif
+
     manager.update();
 }
